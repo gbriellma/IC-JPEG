@@ -74,7 +74,6 @@ After running, the script will generate two main directories:
 
 ### 🇧🇷 Versão em Português (`README.md`)
 
-````markdown
 # Ferramenta de Compressão e Análise de Imagens com DCT
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
