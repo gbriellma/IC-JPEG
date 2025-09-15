@@ -14,14 +14,18 @@ def calcular_metricas_de_qualidade(imagem_original, imagem_reconstruida):
 def imprimir_e_salvar_resultados(lista_de_resultados, tempo_total, nome_da_imagem, output_dir=None, plot_dir=None):
     linhas_de_saida = []
     linhas_de_saida.append(f"--- RESULTADOS FINAIS: {nome_da_imagem} ---")
-    linhas_de_saida.append("┌─────────┬───────────┬─────────┬──────────────┐")
-    linhas_de_saida.append("│ Fator k │ PSNR (dB) │  SSIM   │ Tempo (ms)   │")
-    linhas_de_saida.append("├─────────┼───────────┼─────────┼──────────────┤")
+    linhas_de_saida.append("┌─────────┬───────────┬─────────┬──────────────────────────────┐")
+    linhas_de_saida.append("│ Fator k │ PSNR (dB) │  SSIM   │ Tempo (ms | s | min)        │")
+    linhas_de_saida.append("├─────────┼───────────┼─────────┼──────────────────────────────┤")
     for resultado_tupla in lista_de_resultados:
         fator_k, valor_psnr, valor_ssim, tempo, _ = resultado_tupla
-        linhas_de_saida.append(f"│ {fator_k:>6.1f}  │  {valor_psnr:7.2f}  │ {valor_ssim:.4f}  │ {tempo:>12.2f} │")
-    linhas_de_saida.append("└─────────┴───────────┴─────────┴──────────────┘")
-    linhas_de_saida.append(f"\nTempo total de processamento: {tempo_total:.2f} ms")
+        tempo_s = tempo / 1000
+        tempo_min = tempo_s / 60
+        linhas_de_saida.append(f"│ {fator_k:>6.1f}  │  {valor_psnr:7.2f}  │ {valor_ssim:.4f}  │ {tempo:>8.2f} | {tempo_s:>6.2f} | {tempo_min:>6.2f} │")
+    linhas_de_saida.append("└─────────┴───────────┴─────────┴──────────────────────────────┘")
+    tempo_total_s = tempo_total / 1000
+    tempo_total_min = tempo_total_s / 60
+    linhas_de_saida.append(f"\nTempo total de processamento: {tempo_total:.2f} ms | {tempo_total_s:.2f} s | {tempo_total_min:.2f} min")
 
     string_de_saida_completa = "\n".join(linhas_de_saida)
 

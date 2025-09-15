@@ -4,7 +4,7 @@ from constantes import C1, S1, C3, S3, C6, S6, SQRT_2
 
 # ----------------- Algoritmo Rápido de Loeffler -----------------
 def dct_loeffler_1d(vetor_entrada):
-    vetor = np.asarray(vetor_entrada, dtype=np.float64).flatten()
+    vetor = np.asarray(vetor_entrada, dtype=np.float32).flatten() 
     
     # Estágio 1: Borboletas de Adição/Subtração
     soma_07, dif_07 = vetor[0] + vetor[7], vetor[0] - vetor[7]
@@ -36,7 +36,7 @@ def dct_loeffler_1d(vetor_entrada):
 
 
 def idct_loeffler_1d(coeficientes_dct):
-    vetor_Z = np.asarray(coeficientes_dct, dtype=np.float64).flatten() * 2.0
+    vetor_Z = np.asarray(coeficientes_dct, dtype=np.float32).flatten() * 2.0 
     Z0, Z1, Z2, Z3, Z4, Z5, Z6, Z7 = vetor_Z
     
     # Estágio 1 Inverso: Rotações (componentes pares)
@@ -77,7 +77,7 @@ def idct_loeffler_1d(coeficientes_dct):
 # ----------------- Definição Matricial -----------------
 def dct_matrix_1d(vetor_entrada):
     TAMANHO = 8
-    coeficientes_dct = np.zeros(TAMANHO, dtype=np.float64)
+    coeficientes_dct = np.zeros(TAMANHO, dtype=np.float32) 
     
     for k in range(TAMANHO):
         alpha = 1.0 / SQRT_2 if k == 0 else 1.0
@@ -91,7 +91,7 @@ def dct_matrix_1d(vetor_entrada):
 
 def idct_matrix_1d(coeficientes_dct):
     TAMANHO = 8
-    vetor_saida = np.zeros(TAMANHO, dtype=np.float64)
+    vetor_saida = np.zeros(TAMANHO, dtype=np.float32)
     
     for n in range(TAMANHO):
         soma = 0.0

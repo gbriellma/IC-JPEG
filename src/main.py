@@ -5,7 +5,7 @@ import numpy as np
 
 from dct import dct_loeffler_1d, idct_loeffler_1d, dct_matrix_1d, idct_matrix_1d
 from pipeline import processar_canal, rgb_para_ycbcr, ycbcr_para_rgb
-from utils import (imprimir_e_salvar_resultados, plotar_metricas_vs_fator_k, plotar_barras_comparativas, 
+from plots import (imprimir_e_salvar_resultados, plotar_metricas_vs_fator_k, plotar_barras_comparativas, 
                     plotar_tradeoff_qualidade_vs_tempo, plotar_analise_do_dataset, calcular_metricas_de_qualidade)
 from constantes import Q50_LUMA, Q50_CHROMA
 
