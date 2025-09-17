@@ -1,28 +1,30 @@
-import math
 import numpy as np
 
-C1 = math.cos(math.pi / 16.0)
-S1 = math.sin(math.pi / 16.0)
-C3 = math.cos(3.0 * math.pi / 16.0)
-S3 = math.sin(3.0 * math.pi / 16.0)
-C6 = math.cos(6.0 * math.pi / 16.0)
-S6 = math.sin(6.0 * math.pi / 16.0)
+TIPO_CONSTANTES = np.float32
+TIPO_Q50 = np.int16
 
-SQRT_2 = math.sqrt(2.0)
+C1 = TIPO_CONSTANTES(0.9807852804032304)  # cos(pi/16) 0.9807852804032304
+S1 = TIPO_CONSTANTES(0.19509032201612825)  # sin(pi/16) 0.19509032201612825
+C3 = TIPO_CONSTANTES(0.8314696123025452)  # cos(3pi/16) 0.8314696123025452
+S3 = TIPO_CONSTANTES(0.5555702330196022)  # sin(3pi/16) 0.5555702330196022
+C6 = TIPO_CONSTANTES(0.3826834323650898)  # cos(6pi/16) 0.3826834323650898
+S6 = TIPO_CONSTANTES(0.9238795325112867)  # sin(6pi/16) 0.9238795325112867
 
-""" Q50_LUMA = np.ones((8,8))
-Q50_CHROMA = np.ones((8,8)) """
+SQRT_2 = TIPO_CONSTANTES(1.4142135623730951)  # sqrt(2) 1.4142135623730951
+
+""" Q50_LUMA = np.ones((8, 8), dtype=TIPO_CONSTANTES)
+Q50_CHROMA = np.ones((8, 8), dtype=TIPO_C) """
 
 Q50_LUMA = np.array([
     [16, 11, 10, 16, 24, 40, 51, 61], [12, 12, 14, 19, 26, 58, 60, 55],
     [14, 13, 16, 24, 40, 57, 69, 56], [14, 17, 22, 29, 51, 87, 80, 62],
     [18, 22, 37, 56, 68, 109, 103, 77], [24, 35, 55, 64, 81, 104, 113, 92],
     [49, 64, 78, 87, 103, 121, 120, 101], [72, 92, 95, 98, 112, 100, 103, 99]
-], dtype=np.uint8)
+], dtype=TIPO_Q50)
 
 Q50_CHROMA = np.array([
     [17, 18, 24, 47, 99, 99, 99, 99], [18, 21, 26, 66, 99, 99, 99, 99],
     [24, 26, 56, 99, 99, 99, 99, 99], [47, 66, 99, 99, 99, 99, 99, 99],
     [99, 99, 99, 99, 99, 99, 99, 99], [99, 99, 99, 99, 99, 99, 99, 99],
     [99, 99, 99, 99, 99, 99, 99, 99], [99, 99, 99, 99, 99, 99, 99, 99]
-], dtype=np.uint8)
+], dtype=TIPO_Q50)

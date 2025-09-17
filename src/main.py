@@ -9,6 +9,7 @@ from plots import (imprimir_e_salvar_resultados, plotar_metricas_vs_fator_k, plo
                     plotar_tradeoff_qualidade_vs_tempo, plotar_analise_do_dataset, calcular_metricas_de_qualidade)
 from constantes import Q50_LUMA, Q50_CHROMA
 
+
 # ---------------- CONFIGURAÇÃO GERAL ----------------
 METODO_DCT = 'loeffler'  #'loeffler' ou 'matrix'
 DIRETORIO_ENTRADA = 'src/imgs'
@@ -16,6 +17,7 @@ DIRETORIO_SAIDA_IMAGENS = f'resultados_{METODO_DCT}'
 DIRETORIO_SAIDA_PLOTS = f'plots_{METODO_DCT}'
 FATORES_DE_COMPRESSAO_K = [2.0, 5.0, 10.0, 15.0]
 
+TIPO_CONSTANTES = np.float32
 
 os.makedirs(DIRETORIO_SAIDA_IMAGENS, exist_ok=True)
 os.makedirs(DIRETORIO_SAIDA_PLOTS, exist_ok=True)
@@ -29,7 +31,7 @@ else:
 # ---------------- FUNÇÃO DE PROCESSAMENTO DE IMAGEM ----------------
 def processar_imagem(caminho_do_arquivo):
     imagem_original = Image.open(caminho_do_arquivo).convert('RGB')
-    matriz_rgb_original = np.array(imagem_original, dtype=np.uint8)
+    matriz_rgb_original = np.array(imagem_original, dtype=TIPO_CONSTANTES)
     
     canal_r, canal_g, canal_b = matriz_rgb_original[:,:,0], matriz_rgb_original[:,:,1], matriz_rgb_original[:,:,2]
     
@@ -55,7 +57,7 @@ def processar_imagem(caminho_do_arquivo):
         os.makedirs(diretorio_saida_da_imagem, exist_ok=True)
         
         caminho_arquivo_saida = os.path.join(diretorio_saida_da_imagem, f"k={fator_k}.png")
-        Image.fromarray(imagem_reconstruida_rgb).save(caminho_arquivo_saida)
+        Image.fromarray(imagem_reconstruida_rgb.astype(np.uint8)).save(caminho_arquivo_saida)
 
         valor_psnr, valor_ssim = calcular_metricas_de_qualidade(matriz_rgb_original, imagem_reconstruida_rgb)
         

@@ -2,11 +2,13 @@ import math
 import numpy as np
 from constantes import C1, S1, C3, S3, C6, S6, SQRT_2
 
+TIPO_CONSTANTES = np.float32
+
 # ----------------- Algoritmo Rápido de Loeffler -----------------
 def dct_loeffler_1d(vetor_entrada):
-    vetor = np.asarray(vetor_entrada, dtype=np.float32).flatten() 
-    
-    # Estágio 1: Borboletas de Adição/Subtração
+    vetor = np.asarray(vetor_entrada, dtype=TIPO_CONSTANTES).flatten() 
+
+    # Estágio 1: Butterfly de Adição/Subtração
     soma_07, dif_07 = vetor[0] + vetor[7], vetor[0] - vetor[7]
     soma_16, dif_16 = vetor[1] + vetor[6], vetor[1] - vetor[6]
     soma_25, dif_25 = vetor[2] + vetor[5], vetor[2] - vetor[5]
@@ -36,7 +38,7 @@ def dct_loeffler_1d(vetor_entrada):
 
 
 def idct_loeffler_1d(coeficientes_dct):
-    vetor_Z = np.asarray(coeficientes_dct, dtype=np.float32).flatten() * 2.0 
+    vetor_Z = np.asarray(coeficientes_dct, dtype=TIPO_CONSTANTES).flatten() * 2.0 
     Z0, Z1, Z2, Z3, Z4, Z5, Z6, Z7 = vetor_Z
     
     # Estágio 1 Inverso: Rotações (componentes pares)
@@ -65,7 +67,7 @@ def idct_loeffler_1d(coeficientes_dct):
     dif_16 = 0.5 * (impar_1 + impar_2)
     dif_25 = 0.5 * (impar_1 - impar_2)
 
-    # Estágio 3 Inverso: Borboletas para reconstruir o sinal original
+    # Estágio 3 Inverso: Butterfly para reconstruir o sinal original
     x0, x7 = 0.5 * (soma_07 + dif_07), 0.5 * (soma_07 - dif_07)
     x1, x6 = 0.5 * (soma_16 + dif_16), 0.5 * (soma_16 - dif_16)
     x2, x5 = 0.5 * (soma_25 + dif_25), 0.5 * (soma_25 - dif_25)
@@ -77,7 +79,7 @@ def idct_loeffler_1d(coeficientes_dct):
 # ----------------- Definição Matricial -----------------
 def dct_matrix_1d(vetor_entrada):
     TAMANHO = 8
-    coeficientes_dct = np.zeros(TAMANHO, dtype=np.float32) 
+    coeficientes_dct = np.zeros(TAMANHO, dtype=TIPO_CONSTANTES) 
     
     for k in range(TAMANHO):
         alpha = 1.0 / SQRT_2 if k == 0 else 1.0
@@ -91,7 +93,7 @@ def dct_matrix_1d(vetor_entrada):
 
 def idct_matrix_1d(coeficientes_dct):
     TAMANHO = 8
-    vetor_saida = np.zeros(TAMANHO, dtype=np.float32)
+    vetor_saida = np.zeros(TAMANHO, dtype=TIPO_CONSTANTES)
     
     for n in range(TAMANHO):
         soma = 0.0

@@ -1,6 +1,9 @@
 import numpy as np
 from dct import dct_2d, idct_2d
 
+TIPO_CONSTANTES = np.float64
+
+
 def dividir_em_blocos(canal_imagem):
     altura_original, largura_original = canal_imagem.shape
     
@@ -24,11 +27,11 @@ def juntar_blocos(lista_de_blocos, dimensao_preenchida, dimensao_original):
     return canal_completo[:altura_original, :largura_original]
 
 def processar_canal(canal_imagem, tabela_quantizacao, fator_k, funcao_dct_1d, funcao_idct_1d):
-    canal_deslocado = canal_imagem.astype(np.float64) - 128.0
+    canal_deslocado = canal_imagem.astype(TIPO_CONSTANTES) - 128.0
     
     blocos, dimensao_preenchida, dimensao_original = dividir_em_blocos(canal_deslocado)
 
-    tabela_quantizacao_escalonada = tabela_quantizacao * float(fator_k)
+    tabela_quantizacao_escalonada = tabela_quantizacao * (fator_k)
     
     blocos_processados = []
 
@@ -58,4 +61,4 @@ def ycbcr_para_rgb(canal_y, canal_cb, canal_cr):
 
     matriz_rgb = np.stack([canal_r, canal_g, canal_b], axis=-1)
     
-    return np.clip(matriz_rgb, 0, 255).astype(np.uint8)
+    return np.clip(matriz_rgb, 0, 255).astype(TIPO_CONSTANTES)
