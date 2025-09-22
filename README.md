@@ -38,7 +38,7 @@ The compression process follows these main steps for each image:
 ├── dct.py                # DCT algorithm implementations
 ├── main.py               # Main script to run the project
 ├── pipeline.py           # Core compression/decompression pipeline
-├── utils.py              # Helper functions (metrics, plotting, logging)
+├── plots.py              # Helper functions (metrics, plotting, logging)
 └── requirements.txt      # Project dependencies
 ```
 
@@ -114,7 +114,7 @@ O processo de compressão segue os seguintes passos para cada imagem:
 ├── dct.py                # Implementações do algoritmo DCT
 ├── main.py               # Script principal para rodar o projeto
 ├── pipeline.py           # Pipeline principal de compressão/descompressão
-├── utils.py              # Funções auxiliares (métricas, plots, logs)
+├── plots.py              # Funções auxiliares (métricas, plots, logs)
 └── requirements.txt      # Dependências do projeto
 ```
 

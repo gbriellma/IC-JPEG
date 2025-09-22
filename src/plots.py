@@ -1,151 +1,175 @@
 import os
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from skimage.metrics import peak_signal_noise_ratio as calcular_psnr, structural_similarity as calcular_ssim
+import matplotlib.pyplot as plt
+from skimage.metrics import peak_signal_noise_ratio as compute_psnr
+from skimage.metrics import structural_similarity as compute_ssim
 
-# ---------------- FUNÇÕES DE MÉTRICAS ----------------
-def calcular_metricas_de_qualidade(imagem_original, imagem_reconstruida):
-    valor_psnr = calcular_psnr(imagem_original, imagem_reconstruida, data_range=255)
-    valor_ssim = calcular_ssim(imagem_original, imagem_reconstruida, data_range=255, channel_axis=-1, win_size=7)
-    return valor_psnr, valor_ssim
+def quality_metrics(original, reconstructed):
+    psnr = compute_psnr(original, reconstructed, data_range=255)
+    ssim = compute_ssim(original.astype(np.uint8), reconstructed.astype(np.uint8), channel_axis=-1, data_range=255, win_size=7)
+    return psnr, ssim
 
-# ---------------- FUNÇÕES DE SAÍDA (OUTPUT) ----------------
-def imprimir_e_salvar_resultados(lista_de_resultados, tempo_total, nome_da_imagem, output_dir=None, plot_dir=None):
-    linhas_de_saida = []
-    linhas_de_saida.append(f"--- RESULTADOS FINAIS: {nome_da_imagem} ---")
-    linhas_de_saida.append("┌─────────┬───────────┬─────────┬──────────────────────────────┐")
-    linhas_de_saida.append("│ Fator k │ PSNR (dB) │  SSIM   │ Tempo (ms | s | min)        │")
-    linhas_de_saida.append("├─────────┼───────────┼─────────┼──────────────────────────────┤")
-    for resultado_tupla in lista_de_resultados:
-        fator_k, valor_psnr, valor_ssim, tempo, _ = resultado_tupla
-        tempo_s = tempo / 1000
-        tempo_min = tempo_s / 60
-        linhas_de_saida.append(f"│ {fator_k:>6.1f}  │  {valor_psnr:7.2f}  │ {valor_ssim:.4f}  │ {tempo:>8.2f} | {tempo_s:>6.2f} | {tempo_min:>6.2f} │")
-    linhas_de_saida.append("└─────────┴───────────┴─────────┴──────────────────────────────┘")
-    tempo_total_s = tempo_total / 1000
-    tempo_total_min = tempo_total_s / 60
-    linhas_de_saida.append(f"\nTempo total de processamento: {tempo_total:.2f} ms | {tempo_total_s:.2f} s | {tempo_total_min:.2f} min")
+def compute_bitrate(quantized_blocks):
+    zigzag_indices = [
+        (0,0),(0,1),(1,0),(2,0),(1,1),(0,2),(0,3),(1,2),
+        (2,1),(3,0),(4,0),(3,1),(2,2),(1,3),(0,4),(0,5),
+        (1,4),(2,3),(3,2),(4,1),(5,0),(6,0),(5,1),(4,2),
+        (3,3),(2,4),(1,5),(0,6),(0,7),(1,6),(2,5),(3,4),
+        (4,3),(5,2),(6,1),(7,0),(7,1),(6,2),(5,3),(4,4),
+        (3,5),(2,6),(1,7),(2,7),(3,6),(4,5),(5,4),(6,3),
+        (7,2),(7,3),(6,4),(5,5),(4,6),(3,7),(4,7),(5,6),
+        (6,5),(7,4),(7,5),(6,6),(5,7),(6,7),(7,6),(7,7)
+    ]
+    def zigzag(block):
+        return np.array([block[i,j] for i,j in zigzag_indices])
+    blocks = quantized_blocks.reshape(-1,8,8)
+    last_indices = []
+    nonzero_counts = []
+    total_last_count = 0
+    total_bits_amp = 0
+    for block in blocks:
+        vec = zigzag(block)
+        nz = np.nonzero(vec)[0]
+        if nz.size == 0:
+            last_indices.append(-1)
+            nonzero_counts.append(0)
+        else:
+            last_indices.append(int(nz[-1]))
+            nonzero_counts.append(int(nz.size))
+            total_last_count += int(nz[-1]) + 1
+        for v in vec:
+            if v != 0:
+                total_bits_amp += abs(int(v)).bit_length() + 1
+    mean_last = float(np.mean([li if li>=0 else 0 for li in last_indices])) if last_indices else 0.0
+    mean_nonzero = float(np.mean(nonzero_counts)) if nonzero_counts else 0.0
+    bpp_zigzag = ((mean_last + 1) * 8) / 64.0
+    bpp_amplitude = (total_bits_amp / len(blocks)) / 64.0 if len(blocks)>0 else 0.0
+    return {
+        'mean_last': mean_last,
+        'mean_nonzero': mean_nonzero,
+        'bpp_zigzag': bpp_zigzag,
+        'bpp_amplitude': bpp_amplitude,
+        'total_last_count': total_last_count
+    }
 
-    string_de_saida_completa = "\n".join(linhas_de_saida)
-
-    print("\n" + string_de_saida_completa)
-    
+def print_results(results, total_time, image_name, output_dir=None, plot_dir=None):
+    lines = []
+    lines.append(f"--- FINAL RESULTS: {image_name} ---")
+    lines.append("┌─────────┬───────────┬─────────┬──────────────────────────────┬────────────────────┐")
+    lines.append("│ k Factor│ PSNR (dB) │  SSIM   │ Bitrate (coef/pixel)        │ Time (ms | s | min)│")
+    lines.append("├─────────┼───────────┼─────────┼──────────────────────────────┼────────────────────┤")
+    for k, psnr, ssim, time_ms, bitrate in results:
+        time_s = time_ms / 1000.0
+        time_min = time_s / 60.0
+        lines.append(f"│ {int(k):>7d}│ {psnr:9.2f} │ {ssim:7.4f} │ {bitrate:18.6f} │ {time_ms:8.2f} | {time_s:6.2f} | {time_min:6.2f} │")
+    lines.append("└─────────┴───────────┴─────────┴──────────────────────────────┴────────────────────┘")
+    total_time_s = total_time / 1000.0
+    total_time_min = total_time_s / 60.0
+    lines.append(f"\nTotal processing time: {total_time:.2f} ms | {total_time_s:.2f} s | {total_time_min:.2f} min")
+    output_str = "\n".join(lines)
+    print(output_str)
+    if output_dir:
+        sub = os.path.join(output_dir, os.path.basename(image_name).split('.')[0])
+        os.makedirs(sub, exist_ok=True)
+        txt_path = os.path.join(sub, 'results.txt')
+        with open(txt_path, 'w', encoding='utf-8') as f:
+            f.write(output_str)
     if plot_dir:
-        caminho_subdiretorio_plot = os.path.join(plot_dir, nome_da_imagem.split('.')[0])
-        os.makedirs(caminho_subdiretorio_plot, exist_ok=True)
-        
-        caminho_arquivo_txt = os.path.join(caminho_subdiretorio_plot, f"resultados_{nome_da_imagem.split('.')[0]}.txt")
-        
-        with open(caminho_arquivo_txt, 'w', encoding='utf-8') as arquivo:
-            arquivo.write(string_de_saida_completa)
-        print(f"Resultados também salvos em: '{caminho_arquivo_txt}'")
+        subp = os.path.join(plot_dir, os.path.basename(image_name).split('.')[0])
+        os.makedirs(subp, exist_ok=True)
+        ptxt = os.path.join(subp, f"results_{os.path.basename(image_name)}.txt")
+        with open(ptxt, 'w', encoding='utf-8') as f:
+            f.write(output_str)
 
 
-# ---------------- FUNÇÕES DE PLOTAGEM ----------------
-def plotar_metricas_vs_fator_k(lista_de_resultados, nome_da_imagem, diretorio_saida='plots'):
-    fatores_k = [res[0] for res in lista_de_resultados]
-    valores_psnr = [res[1] for res in lista_de_resultados]
-    valores_ssim = [res[2] for res in lista_de_resultados]
-    
-    caminho_subdiretorio_plot = os.path.join(diretorio_saida, nome_da_imagem.split('.')[0])
-    os.makedirs(caminho_subdiretorio_plot, exist_ok=True)
-
-    figura, eixo_psnr = plt.subplots(figsize=(8,5))
-    
-    cor_psnr = 'tab:blue'
-    eixo_psnr.set_xlabel('Fator k')
-    eixo_psnr.set_ylabel('PSNR (dB)', color=cor_psnr)
-    eixo_psnr.plot(fatores_k, valores_psnr, marker='o', color=cor_psnr, label='PSNR')
-    eixo_psnr.tick_params(axis='y', labelcolor=cor_psnr)
-    eixo_psnr.grid(True, linestyle='--', alpha=0.5)
-
-    eixo_ssim = eixo_psnr.twinx()
-    cor_ssim = 'tab:green'
-    eixo_ssim.set_ylabel('SSIM', color=cor_ssim)
-    eixo_ssim.plot(fatores_k, valores_ssim, marker='s', color=cor_ssim, label='SSIM')
-    eixo_ssim.tick_params(axis='y', labelcolor=cor_ssim)
-
-    plt.title(f"Desempenho da Compressão: {nome_da_imagem}")
-    figura.tight_layout()
-    plt.savefig(os.path.join(caminho_subdiretorio_plot, f'{nome_da_imagem}_metricas_linha.png'))
-    plt.close()
-
-def plotar_barras_comparativas(lista_de_resultados, nome_da_imagem, diretorio_saida='plots'):
-    fatores_k = [str(res[0]) for res in lista_de_resultados]
-    valores_psnr = [res[1] for res in lista_de_resultados]
-    valores_ssim = [res[2] for res in lista_de_resultados]
-
-    caminho_subdiretorio_plot = os.path.join(diretorio_saida, nome_da_imagem.split('.')[0])
-    os.makedirs(caminho_subdiretorio_plot, exist_ok=True)
-
-    plt.figure(figsize=(7, 5))
-    plt.bar(fatores_k, valores_psnr, color='skyblue')
-    plt.xlabel('Fator k')
+def plot_psnr(results, image_name, out_dir='plots'):
+    ks = [r[0] for r in results]
+    psnrs = [r[1] for r in results]
+    name = os.path.basename(image_name).split('.')[0]
+    sub = os.path.join(out_dir, name)
+    os.makedirs(sub, exist_ok=True)
+    plt.figure(figsize=(8,5))
+    plt.plot(ks, psnrs, marker='o')
+    plt.xlabel('k factor')
     plt.ylabel('PSNR (dB)')
-    plt.title(f'PSNR por Fator k: {nome_da_imagem}')
-    plt.grid(axis='y', linestyle='--', alpha=0.7)
-    plt.savefig(os.path.join(caminho_subdiretorio_plot, f'{nome_da_imagem}_psnr_barras.png'))
-    plt.close()
-
-    plt.figure(figsize=(7, 5))
-    plt.bar(fatores_k, valores_ssim, color='lightgreen')
-    plt.xlabel('Fator k')
-    plt.ylabel('SSIM')
-    plt.ylim(bottom=min(valores_ssim) * 0.95, top=1.0)
-    plt.title(f'SSIM por Fator k: {nome_da_imagem}')
-    plt.grid(axis='y', linestyle='--', alpha=0.7)
-    plt.savefig(os.path.join(caminho_subdiretorio_plot, f'{nome_da_imagem}_ssim_barras.png'))
-    plt.close()
-
-def plotar_tradeoff_qualidade_vs_tempo(lista_de_resultados, nome_da_imagem, diretorio_saida='plots'):
-    fatores_k = [res[0] for res in lista_de_resultados]
-    valores_psnr = [res[1] for res in lista_de_resultados]
-    tempos_ms = [res[3] for res in lista_de_resultados]
-    
-    caminho_subdiretorio_plot = os.path.join(diretorio_saida, nome_da_imagem.split('.')[0])
-    os.makedirs(caminho_subdiretorio_plot, exist_ok=True)
-
-    plt.figure(figsize=(8, 6))
-    plt.scatter(tempos_ms, valores_psnr, c=fatores_k, cmap='viridis', s=100, edgecolors='k', alpha=0.75)
-    plt.colorbar(label='Fator k')
-
-    for indice, k in enumerate(fatores_k):
-        plt.annotate(f'k={k}', (tempos_ms[indice], valores_psnr[indice]), textcoords="offset points", xytext=(0,10), ha='center')
-
-    plt.xlabel('Tempo de Processamento (ms)')
-    plt.ylabel('PSNR (dB)')
-    plt.title(f'Trade-off Qualidade vs. Tempo: {nome_da_imagem}')
+    plt.title('PSNR vs k: ' + name)
     plt.grid(True, linestyle='--', alpha=0.6)
-    plt.savefig(os.path.join(caminho_subdiretorio_plot, f'{nome_da_imagem}_tradeoff.png'))
+    fname = name + '_psnr.png'
+    plt.savefig(os.path.join(sub, fname))
     plt.close()
 
-def plotar_analise_do_dataset(resultados_globais, diretorio_saida='plots'):
-    if not resultados_globais:
-        print("Nenhum resultado global para plotar a análise do dataset.")
+def plot_ssim(results, image_name, out_dir='plots'):
+    ks = [r[0] for r in results]
+    ssims = [r[2] for r in results]
+    name = os.path.basename(image_name).split('.')[0]
+    sub = os.path.join(out_dir, name)
+    os.makedirs(sub, exist_ok=True)
+    plt.figure(figsize=(8,5))
+    plt.plot(ks, ssims, marker='o')
+    plt.xlabel('k factor')
+    plt.ylabel('SSIM')
+    plt.title('SSIM vs k: ' + name)
+    plt.grid(True, linestyle='--', alpha=0.6)
+    fname = name + '_ssim.png'
+    plt.savefig(os.path.join(sub, fname))
+    plt.close()
+
+def plot_bitrate(bitrate_list, image_name, out_dir='plots'):
+    ks = [b[0] for b in bitrate_list]
+    bpp_z = [b[1]['bpp_zigzag'] for b in bitrate_list]
+    bpp_amp = [b[1]['bpp_amplitude'] for b in bitrate_list]
+    name = os.path.basename(image_name).split('.')[0]
+    sub = os.path.join(out_dir, name)
+    os.makedirs(sub, exist_ok=True)
+    plt.figure(figsize=(8,5))
+    plt.plot(ks, bpp_z, marker='o', label='BPP ZigZag')
+    plt.plot(ks, bpp_amp, marker='s', label='BPP Amplitude')
+    plt.xlabel('k factor')
+    plt.ylabel('Bits per pixel (approx)')
+    plt.title('Bitrate vs k: ' + name)
+    plt.legend()
+    plt.grid(True, linestyle='--', alpha=0.6)
+    fname = name + '_bitrate.png'
+    plt.savefig(os.path.join(sub, fname))
+    plt.close()
+
+def plot_dataset(results_global, bitrate_global, out_dir='plots'):
+    if not results_global:
         return
-
-    lista_plana_resultados = [item for sublista in resultados_globais for item in sublista]
-    dataframe_resultados = pd.DataFrame(lista_plana_resultados, columns=['k', 'PSNR', 'SSIM', 'Tempo', 'Imagem'])
-
-    caminho_diretorio_analise = os.path.join(diretorio_saida, '_analise_dataset')
-    os.makedirs(caminho_diretorio_analise, exist_ok=True)
-    
-    fatores_k_unicos = sorted(dataframe_resultados['k'].unique())
-
-    for nome_metrica in ['PSNR', 'SSIM', 'Tempo']:
-        plt.figure(figsize=(8, 6))
-        
-        dados_para_plotagem = [dataframe_resultados[dataframe_resultados['k'] == k][nome_metrica].values for k in fatores_k_unicos]
-
-        plt.boxplot(dados_para_plotagem, labels=[str(k) for k in fatores_k_unicos])
-        
-        plt.title(f'Distribuição de {nome_metrica} por Fator k (Dataset Completo)')
-        plt.xlabel('Fator k')
-        unidade = ' (dB)' if nome_metrica == 'PSNR' else ' (ms)' if nome_metrica == 'Tempo' else ''
-        plt.ylabel(f'{nome_metrica}{unidade}')
-        plt.grid(axis='y', linestyle='--', alpha=0.7)
-        plt.savefig(os.path.join(caminho_diretorio_analise, f'dataset_{nome_metrica}_boxplot.png'))
+    flat = [item for sub in results_global for item in sub]
+    df = pd.DataFrame(flat, columns=['k','PSNR','SSIM','Time','Image'])
+    analysis = os.path.join(out_dir, '_dataset_analysis')
+    os.makedirs(analysis, exist_ok=True)
+    unique_k = sorted(df['k'].unique())
+    mean_psnr = [df[df['k']==k]['PSNR'].mean() for k in unique_k]
+    mean_ssim = [df[df['k']==k]['SSIM'].mean() for k in unique_k]
+    plt.figure(figsize=(8,5))
+    plt.plot(unique_k, mean_psnr, marker='o')
+    plt.xlabel('k factor')
+    plt.ylabel('Mean PSNR (dB)')
+    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.savefig(os.path.join(analysis, 'dataset_mean_psnr.png'))
+    plt.close()
+    plt.figure(figsize=(8,5))
+    plt.plot(unique_k, mean_ssim, marker='o')
+    plt.xlabel('k factor')
+    plt.ylabel('Mean SSIM')
+    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.savefig(os.path.join(analysis, 'dataset_mean_ssim.png'))
+    plt.close()
+    if bitrate_global:
+        flat_bitrate = [item for sub in bitrate_global for item in sub]
+        dfb = pd.DataFrame(flat_bitrate, columns=['k','stats','Image'])
+        unique_k_b = sorted(dfb['k'].unique())
+        mean_bpp_z = [dfb[dfb['k']==k]['stats'].apply(lambda x: x['bpp_zigzag']).mean() for k in unique_k_b]
+        mean_bpp_amp = [dfb[dfb['k']==k]['stats'].apply(lambda x: x['bpp_amplitude']).mean() for k in unique_k_b]
+        plt.figure(figsize=(8,5))
+        plt.plot(unique_k_b, mean_bpp_z, marker='o', label='BPP ZigZag')
+        plt.plot(unique_k_b, mean_bpp_amp, marker='s', label='BPP Amplitude')
+        plt.xlabel('k factor')
+        plt.ylabel('Bits per pixel (approx)')
+        plt.legend()
+        plt.grid(True, linestyle='--', alpha=0.6)
+        plt.savefig(os.path.join(analysis, 'dataset_mean_bitrate.png'))
         plt.close()
-    
-    print(f"\nAnálise do dataset concluída. plots salvos em '{caminho_diretorio_analise}/'")
