@@ -7,8 +7,9 @@ from constantes import Q50_LUMA, Q50_CHROMA
 from plots import quality_metrics, compute_bitrate, print_results, plot_psnr, plot_ssim, plot_bitrate, plot_dataset
 
 INPUT_DIR = 'src/imgs'
-RESULTS_DIR = 'resultados_loeffler'
+RESULTS_DIR = 'results_loeffler'
 PLOTS_DIR = 'plots_loeffler'
+#K_FACTORS = [1.0]
 K_FACTORS = [2.0, 5.0, 10.0, 15.0]
 
 def process_image(path):
@@ -28,9 +29,8 @@ def process_image(path):
         subdir = os.path.join(RESULTS_DIR, os.path.basename(path).split('.')[0])
         os.makedirs(subdir, exist_ok=True)
         try:
-            recon_uint8 = recon.astype('uint8')
             out_img_path = os.path.join(subdir, f"k={int(k)}.png")
-            Image.fromarray(recon_uint8).save(out_img_path)
+            Image.fromarray(recon).save(out_img_path)
         except Exception:
             pass
         t1 = time.perf_counter()
@@ -75,7 +75,7 @@ def process_image(path):
 def process_dataset():
     os.makedirs(RESULTS_DIR, exist_ok=True)
     os.makedirs(PLOTS_DIR, exist_ok=True)
-    files = [f for f in os.listdir(INPUT_DIR) if f.lower().endswith(('.png','.jpg','.jpeg'))]
+    files = [f for f in os.listdir(INPUT_DIR) if f.lower().endswith(('.png','.jpg','.jpeg','.bmp'))]
     global_results = []
     global_bitrates = []
     for f in files:
@@ -93,5 +93,4 @@ def process_dataset():
 if __name__ == '__main__':
     if not os.path.exists(INPUT_DIR):
         os.makedirs(INPUT_DIR)
-    else:
-        process_dataset()
+    process_dataset()

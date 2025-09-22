@@ -1,6 +1,5 @@
 import os
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 from skimage.metrics import peak_signal_noise_ratio as compute_psnr
 from skimage.metrics import structural_similarity as compute_ssim
@@ -24,10 +23,10 @@ def compute_bitrate(quantized_blocks):
     def zigzag(block):
         return np.array([block[i,j] for i,j in zigzag_indices])
     blocks = quantized_blocks.reshape(-1,8,8)
-    last_indices = []
-    nonzero_counts = []
     total_last_count = 0
     total_bits_amp = 0
+    last_indices = []
+    nonzero_counts = []
     for block in blocks:
         vec = zigzag(block)
         nz = np.nonzero(vec)[0]
@@ -45,20 +44,14 @@ def compute_bitrate(quantized_blocks):
     mean_nonzero = float(np.mean(nonzero_counts)) if nonzero_counts else 0.0
     bpp_zigzag = ((mean_last + 1) * 8) / 64.0
     bpp_amplitude = (total_bits_amp / len(blocks)) / 64.0 if len(blocks)>0 else 0.0
-    return {
-        'mean_last': mean_last,
-        'mean_nonzero': mean_nonzero,
-        'bpp_zigzag': bpp_zigzag,
-        'bpp_amplitude': bpp_amplitude,
-        'total_last_count': total_last_count
-    }
+    return {'mean_last': mean_last, 'mean_nonzero': mean_nonzero, 'bpp_zigzag': bpp_zigzag, 'bpp_amplitude': bpp_amplitude, 'total_last_count': total_last_count}
 
 def print_results(results, total_time, image_name, output_dir=None, plot_dir=None):
     lines = []
     lines.append(f"--- FINAL RESULTS: {image_name} ---")
     lines.append("┌─────────┬───────────┬─────────┬──────────────────────────────┬────────────────────┐")
     lines.append("│ k Factor│ PSNR (dB) │  SSIM   │ Bitrate (coef/pixel)        │ Time (ms | s | min)│")
-    lines.append("├─────────┼───────────┼─────────┼──────────────────────────────┼────────────────────┤")
+    lines.append("├─────────┼─────────┼─────────┼──────────────────────────────┼────────────────────┤")
     for k, psnr, ssim, time_ms, bitrate in results:
         time_s = time_ms / 1000.0
         time_min = time_s / 60.0
@@ -69,19 +62,16 @@ def print_results(results, total_time, image_name, output_dir=None, plot_dir=Non
     lines.append(f"\nTotal processing time: {total_time:.2f} ms | {total_time_s:.2f} s | {total_time_min:.2f} min")
     output_str = "\n".join(lines)
     print(output_str)
-    if output_dir:
-        sub = os.path.join(output_dir, os.path.basename(image_name).split('.')[0])
-        os.makedirs(sub, exist_ok=True)
-        txt_path = os.path.join(sub, 'results.txt')
-        with open(txt_path, 'w', encoding='utf-8') as f:
-            f.write(output_str)
     if plot_dir:
         subp = os.path.join(plot_dir, os.path.basename(image_name).split('.')[0])
         os.makedirs(subp, exist_ok=True)
-        ptxt = os.path.join(subp, f"results_{os.path.basename(image_name)}.txt")
-        with open(ptxt, 'w', encoding='utf-8') as f:
+        with open(os.path.join(subp, 'results.txt'), 'w', encoding='utf-8') as f:
             f.write(output_str)
-
+    elif output_dir:
+        sub = os.path.join(output_dir, os.path.basename(image_name).split('.')[0])
+        os.makedirs(sub, exist_ok=True)
+        with open(os.path.join(sub, 'results.txt'), 'w', encoding='utf-8') as f:
+            f.write(output_str)
 
 def plot_psnr(results, image_name, out_dir='plots'):
     ks = [r[0] for r in results]
@@ -95,8 +85,7 @@ def plot_psnr(results, image_name, out_dir='plots'):
     plt.ylabel('PSNR (dB)')
     plt.title('PSNR vs k: ' + name)
     plt.grid(True, linestyle='--', alpha=0.6)
-    fname = name + '_psnr.png'
-    plt.savefig(os.path.join(sub, fname))
+    plt.savefig(os.path.join(sub, name + '_psnr.png'))
     plt.close()
 
 def plot_ssim(results, image_name, out_dir='plots'):
@@ -111,8 +100,7 @@ def plot_ssim(results, image_name, out_dir='plots'):
     plt.ylabel('SSIM')
     plt.title('SSIM vs k: ' + name)
     plt.grid(True, linestyle='--', alpha=0.6)
-    fname = name + '_ssim.png'
-    plt.savefig(os.path.join(sub, fname))
+    plt.savefig(os.path.join(sub, name + '_ssim.png'))
     plt.close()
 
 def plot_bitrate(bitrate_list, image_name, out_dir='plots'):
@@ -130,14 +118,14 @@ def plot_bitrate(bitrate_list, image_name, out_dir='plots'):
     plt.title('Bitrate vs k: ' + name)
     plt.legend()
     plt.grid(True, linestyle='--', alpha=0.6)
-    fname = name + '_bitrate.png'
-    plt.savefig(os.path.join(sub, fname))
+    plt.savefig(os.path.join(sub, name + '_bitrate.png'))
     plt.close()
 
 def plot_dataset(results_global, bitrate_global, out_dir='plots'):
     if not results_global:
         return
     flat = [item for sub in results_global for item in sub]
+    import pandas as pd
     df = pd.DataFrame(flat, columns=['k','PSNR','SSIM','Time','Image'])
     analysis = os.path.join(out_dir, '_dataset_analysis')
     os.makedirs(analysis, exist_ok=True)
