@@ -46,11 +46,45 @@ def compute_bitrate(quantized_blocks):
     bpp_amplitude = (total_bits_amp / len(blocks)) / 64.0 if len(blocks)>0 else 0.0
     return {'mean_last': mean_last, 'mean_nonzero': mean_nonzero, 'bpp_zigzag': bpp_zigzag, 'bpp_amplitude': bpp_amplitude, 'total_last_count': total_last_count}
 
+def results_table(results, total_time, image_name, directory):
+    if not directory:
+        return
+    os.makedirs(directory, exist_ok=True)
+    headers = ["k Factor", "PSNR (dB)", "SSIM", "Bitrate (bpp)", "Tempo (ms)", "Tempo (s)", "Tempo (min)"]
+    rows = []
+    for k, psnr, ssim, time_ms, bitrate in results:
+        time_s = time_ms / 1000.0
+        time_min = time_s / 60.0
+        rows.append([
+            f"{int(k)}",
+            f"{psnr:.2f}",
+            f"{ssim:.4f}",
+            f"{bitrate:.6f}",
+            f"{time_ms:.2f}",
+            f"{time_s:.2f}",
+            f"{time_min:.2f}"
+        ])
+    fig_height = 1.5 + 0.4 * len(rows)
+    fig, ax = plt.subplots(figsize=(10, fig_height))
+    ax.axis('off')
+    ax.set_title(f"Resultados: {os.path.basename(image_name)}", fontsize=12, pad=12)
+    table = ax.table(cellText=rows, colLabels=headers, loc='center', cellLoc='center')
+    table.auto_set_font_size(False)
+    table.set_fontsize(10)
+    table.scale(1, 1.2)
+    total_time_s = total_time / 1000.0
+    total_time_min = total_time_s / 60.0
+    ax.text(0.5, -0.1, f"Tempo total: {total_time:.2f} ms | {total_time_s:.2f} s | {total_time_min:.2f} min", ha='center', va='center', fontsize=10, transform=ax.transAxes)
+    plt.tight_layout()
+    outfile = os.path.join(directory, 'results_table.png')
+    fig.savefig(outfile, bbox_inches='tight', dpi=200)
+    plt.close(fig)
+
 def print_results(results, total_time, image_name, output_dir=None, plot_dir=None):
     lines = []
     lines.append(f"--- FINAL RESULTS: {image_name} ---")
     lines.append("┌─────────┬───────────┬─────────┬──────────────────────────────┬────────────────────┐")
-    lines.append("│ k Factor│ PSNR (dB) │  SSIM   │ Bitrate (coef/pixel)        │ Time (ms | s | min)│")
+    lines.append("│ k Factor│ PSNR (dB) │  SSIM   │ Bitrate (bits/pixel)       │ Time (ms | s | min)│")
     lines.append("├─────────┼─────────┼─────────┼──────────────────────────────┼────────────────────┤")
     for k, psnr, ssim, time_ms, bitrate in results:
         time_s = time_ms / 1000.0
@@ -62,16 +96,18 @@ def print_results(results, total_time, image_name, output_dir=None, plot_dir=Non
     lines.append(f"\nTotal processing time: {total_time:.2f} ms | {total_time_s:.2f} s | {total_time_min:.2f} min")
     output_str = "\n".join(lines)
     print(output_str)
+    target_dir = None
     if plot_dir:
-        subp = os.path.join(plot_dir, os.path.basename(image_name).split('.')[0])
-        os.makedirs(subp, exist_ok=True)
-        with open(os.path.join(subp, 'results.txt'), 'w', encoding='utf-8') as f:
+        target_dir = os.path.join(plot_dir, os.path.basename(image_name).split('.')[0])
+        os.makedirs(target_dir, exist_ok=True)
+        with open(os.path.join(target_dir, 'results.txt'), 'w', encoding='utf-8') as f:
             f.write(output_str)
     elif output_dir:
-        sub = os.path.join(output_dir, os.path.basename(image_name).split('.')[0])
-        os.makedirs(sub, exist_ok=True)
-        with open(os.path.join(sub, 'results.txt'), 'w', encoding='utf-8') as f:
+        target_dir = os.path.join(output_dir, os.path.basename(image_name).split('.')[0])
+        os.makedirs(target_dir, exist_ok=True)
+        with open(os.path.join(target_dir, 'results.txt'), 'w', encoding='utf-8') as f:
             f.write(output_str)
+    results_table(results, total_time, image_name, target_dir)
 
 def plot_psnr(results, image_name, out_dir='plots'):
     ks = [r[0] for r in results]

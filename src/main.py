@@ -35,28 +35,6 @@ def process_image(path):
             pass
         t1 = time.perf_counter()
         psnr_val, ssim_val = quality_metrics(arr, recon)
-        h,w = y.shape
-        pixels = h * w
-        def total_lastnz(q_blocks):
-            blocks = q_blocks.reshape(-1,8,8)
-            total = 0
-            for block in blocks:
-                vec = block.flatten()[np.array([
-        0,1,5,6,14,15,27,28,
-        2,4,7,13,16,26,29,42,
-        3,8,12,17,25,30,41,43,
-        9,11,18,24,31,40,44,53,
-        10,19,23,32,39,45,52,54,
-        20,22,33,38,46,51,55,60,
-        21,34,37,47,50,56,59,61,
-        35,36,48,49,57,58,62,63
-                ])]
-                nz = np.nonzero(vec)[0]
-                if nz.size>0:
-                    total += int(nz[-1]) + 1
-            return total
-        total_last = total_lastnz(y_q) + total_lastnz(cb_q) + total_lastnz(cr_q)
-        bitrate_coef_per_pixel = total_last / pixels
         bitrate_stats_y = compute_bitrate(y_q)
         bitrate_stats_cb = compute_bitrate(cb_q)
         bitrate_stats_cr = compute_bitrate(cr_q)
@@ -67,7 +45,7 @@ def process_image(path):
                           'total_last_count': bitrate_stats_y['total_last_count']+bitrate_stats_cb['total_last_count']+bitrate_stats_cr['total_last_count']}
         bitrate_list.append((k, combined_stats, os.path.basename(path)))
         t_ms = (t1 - t0) * 1000.0
-        results.append((k, psnr_val, ssim_val, t_ms, bitrate_coef_per_pixel))
+        results.append((k, psnr_val, ssim_val, t_ms, combined_stats['bpp_zigzag']))
     end_total = time.perf_counter()
     total_ms = (end_total - start_total) * 1000.0
     return results, total_ms, bitrate_list
