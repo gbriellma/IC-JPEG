@@ -1,4 +1,3 @@
-
 import os
 import sys
 import time
@@ -12,7 +11,7 @@ from dct import (dct_loeffler_1d, idct_loeffler_1d,
                  dct_matrix_1d, idct_matrix_1d,
                  dct_approximate_1d, idct_approximate_1d,
                  dct_2d, idct_2d)
-from pipeline import process_channel, rgb_to_ycbcr, ycbcr_to_rgb
+from pipeline import process_channel, rgb_to_ycbcr, ycbcr_to_rgb, calc_bitrate_amplitude
 from constantes import Q50_LUMA, Q50_CHROMA
 from plots import quality_metrics
 
@@ -37,27 +36,30 @@ def process_image_with_method(img_path, method_name, dct_func, idct_func):
     for k in K_FACTORS:
         t0 = time.perf_counter()
         
-        y_rec, _ = process_channel(y, Q50_LUMA, k, dct_func, idct_func)
-        cb_rec, _ = process_channel(cb, Q50_CHROMA, k, dct_func, idct_func)
-        cr_rec, _ = process_channel(cr, Q50_CHROMA, k, dct_func, idct_func)
+        y_rec, quant_y = process_channel(y, Q50_LUMA, k, dct_func, idct_func)
+        cb_rec, quant_cb = process_channel(cb, Q50_CHROMA, k, dct_func, idct_func)
+        cr_rec, quant_cr = process_channel(cr, Q50_CHROMA, k, dct_func, idct_func)
         recon = ycbcr_to_rgb(y_rec, cb_rec, cr_rec)
         
         t1 = time.perf_counter()
         psnr_val, ssim_val = quality_metrics(arr, recon)
         time_ms = (t1 - t0) * 1000.0
         
+        # Calculate bitrate (Y channel only for estimation)
+        bitrate = calc_bitrate_amplitude(quant_y)
+        
         results.append({
             'k': k,
             'psnr': psnr_val,
             'ssim': ssim_val,
             'time_ms': time_ms,
+            'bitrate': bitrate,
             'method': method_name
         })
     
     return results
 
 def compare_all_methods():
-    """Run comparison analysis on all methods"""
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     
     files = [f for f in os.listdir(INPUT_DIR) 
@@ -85,14 +87,13 @@ def compare_all_methods():
             avg_time = np.mean([r['time_ms'] for r in results])
             print(f"Done (avg time: {avg_time:.2f} ms)")
     
-    # Generate comparison plots
     generate_comparison_plots(all_results)
+    generate_bitrate_plots(all_results)
     
-    # Print summary table
     print_summary_table(all_results)
 
 def generate_comparison_plots(results):
-    """Generate comparative plots for all methods"""
+
     
     # Organize data by method and k-factor
     methods = list(METHODS.keys())
@@ -157,7 +158,80 @@ def generate_comparison_plots(results):
     
     plt.tight_layout()
     plt.savefig(os.path.join(OUTPUT_DIR, 'methods_comparison.png'), dpi=200, bbox_inches='tight')
-    print(f"\n✓ Comparison plot saved to {OUTPUT_DIR}/methods_comparison.png")
+    print(f"\n\u2713 Comparison plot saved to {OUTPUT_DIR}/methods_comparison.png")
+    plt.close()
+
+def generate_bitrate_plots(results):
+    """Generate comparative plots using bitrate instead of k-factor"""
+    
+    # Organize data by method and bitrate
+    methods = list(METHODS.keys())
+    
+    # Average metrics across all images for each method and bitrate
+    avg_psnr = {m: [] for m in methods}
+    avg_ssim = {m: [] for m in methods}
+    avg_time = {m: [] for m in methods}
+    avg_bitrate = {m: [] for m in methods}
+    
+    # Group by k-factor first, then average bitrates
+    k_vals = sorted(list(set([r['k'] for r in results])))
+    
+    for k in k_vals:
+        for method in methods:
+            method_k_results = [r for r in results if r['method'] == method and r['k'] == k]
+            avg_psnr[method].append(np.mean([r['psnr'] for r in method_k_results]))
+            avg_ssim[method].append(np.mean([r['ssim'] for r in method_k_results]))
+            avg_time[method].append(np.mean([r['time_ms'] for r in method_k_results]))
+            avg_bitrate[method].append(np.mean([r['bitrate'] for r in method_k_results]))
+    
+    # Create comparison plots with bitrate on x-axis
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    
+    # PSNR vs Bitrate
+    ax = axes[0, 0]
+    for method in methods:
+        ax.plot(avg_bitrate[method], avg_psnr[method], marker='o', label=method, linewidth=2)
+    ax.set_xlabel('Bitrate (bpp)', fontsize=11)
+    ax.set_ylabel('PSNR (dB)', fontsize=11)
+    ax.set_title('PSNR vs Bitrate', fontsize=12, fontweight='bold')
+    ax.legend()
+    ax.grid(True, linestyle='--', alpha=0.6)
+    
+    # SSIM vs Bitrate
+    ax = axes[0, 1]
+    for method in methods:
+        ax.plot(avg_bitrate[method], avg_ssim[method], marker='s', label=method, linewidth=2)
+    ax.set_xlabel('Bitrate (bpp)', fontsize=11)
+    ax.set_ylabel('SSIM', fontsize=11)
+    ax.set_title('SSIM vs Bitrate', fontsize=12, fontweight='bold')
+    ax.legend()
+    ax.grid(True, linestyle='--', alpha=0.6)
+    
+    # Rate-Distortion Efficiency (PSNR/bpp)
+    ax = axes[1, 0]
+    for method in methods:
+        efficiency = [p / b if b > 0 else 0 for p, b in zip(avg_psnr[method], avg_bitrate[method])]
+        ax.plot(avg_bitrate[method], efficiency, marker='^', label=method, linewidth=2)
+    ax.set_xlabel('Bitrate (bpp)', fontsize=11)
+    ax.set_ylabel('PSNR/bpp (dB/bpp)', fontsize=11)
+    ax.set_title('Rate-Distortion Efficiency', fontsize=12, fontweight='bold')
+    ax.legend()
+    ax.grid(True, linestyle='--', alpha=0.6)
+    
+    # Processing Time vs Bitrate
+    ax = axes[1, 1]
+    for method in methods:
+        ax.scatter(avg_bitrate[method], avg_time[method], s=100, label=method, alpha=0.7)
+        ax.plot(avg_bitrate[method], avg_time[method], alpha=0.3)
+    ax.set_xlabel('Bitrate (bpp)', fontsize=11)
+    ax.set_ylabel('Processing Time (ms)', fontsize=11)
+    ax.set_title('Processing Time vs Bitrate', fontsize=12, fontweight='bold')
+    ax.legend()
+    ax.grid(True, linestyle='--', alpha=0.6)
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(OUTPUT_DIR, 'methods_comparison_bitrate.png'), dpi=200, bbox_inches='tight')
+    print(f"\u2713 Bitrate comparison plot saved to {OUTPUT_DIR}/methods_comparison_bitrate.png")
     plt.close()
 
 def print_summary_table(results):
@@ -170,9 +244,9 @@ def print_summary_table(results):
     k_vals = sorted(list(set([r['k'] for r in results])))
     
     for k in k_vals:
-        print(f"\n┌─── k-factor = {k} " + "─"*50)
-        print("│ Method        │  PSNR (dB)  │   SSIM   │  Time (ms)  │")
-        print("├───────────────┼─────────────┼──────────┼─────────────┤")
+        print(f"\n\u250c\u2500\u2500\u2500 k-factor = {k} " + "\u2500"*58)
+        print("\u2502 Method        \u2502  PSNR (dB)  \u2502   SSIM   \u2502  Time (ms)  \u2502 Bitrate (bpp) \u2502")
+        print("\u251c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2524")
         
         for method in methods:
             method_k_results = [r for r in results if r['method'] == method and r['k'] == k]
@@ -180,9 +254,10 @@ def print_summary_table(results):
                 avg_psnr = np.mean([r['psnr'] for r in method_k_results])
                 avg_ssim = np.mean([r['ssim'] for r in method_k_results])
                 avg_time = np.mean([r['time_ms'] for r in method_k_results])
-                print(f"│ {method:13s} │  {avg_psnr:9.2f}  │ {avg_ssim:8.4f} │  {avg_time:9.2f}  │")
+                avg_bitrate = np.mean([r['bitrate'] for r in method_k_results])
+                print(f"\u2502 {method:13s} \u2502  {avg_psnr:9.2f}  \u2502 {avg_ssim:8.4f} \u2502  {avg_time:9.2f}  \u2502    {avg_bitrate:9.3f}  \u2502")
         
-        print("└" + "─"*15 + "┴" + "─"*13 + "┴" + "─"*10 + "┴" + "─"*13 + "┘")
+        print("\u2514" + "\u2500"*15 + "\u2534" + "\u2500"*13 + "\u2534" + "\u2500"*10 + "\u2534" + "\u2500"*13 + "\u2534" + "\u2500"*15 + "\u2518")
     
     # Overall method comparison
     print("\n" + "="*70)

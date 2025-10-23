@@ -73,6 +73,14 @@ def process_channel(channel_image, quant_table, k_factor, dct_1d_func, idct_1d_f
     recon = deblock_image(recon)
     return recon.astype(np.int32), np.array(quantized_blocks).astype(np.int32)
 
+def calc_bitrate_amplitude(quantized_blocks):
+    flat = quantized_blocks.flatten()
+    unique, counts = np.unique(flat, return_counts=True)
+    total = len(flat)
+    prob = counts / total
+    entropy = -np.sum(prob * np.log2(prob + 1e-10))
+    return entropy
+
 def rgb_to_ycbcr(r,g,b):
     r = r.astype(np.int32); g = g.astype(np.int32); b = b.astype(np.int32)
     y = (299*r + 587*g + 114*b + 500) // 1000

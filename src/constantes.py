@@ -12,8 +12,7 @@ SQRT_2 = 1414  # 1.4142135623730951 | sqrt(2) *1000
 SCALE_CONST = 1000
 
 # ----------------- CINTRA-BAYER DCT APPROXIMATION (2011) -----------------
-# Paper: "A DCT Approximation for Image Compression" - IEEE Signal Processing Letters, 2011
-# Matriz T = round(2 * DCT_II_matrix) - contém apenas {-1, 0, 1}
+# Matriz T = round(2 * DCT_II_matrix) {-1, 0, 1}
 T_CINTRA_BAYER = np.array([
     [ 1,  1,  1,  1,  1,  1,  1,  1],
     [ 1,  1,  1,  0,  0, -1, -1, -1],
@@ -25,22 +24,10 @@ T_CINTRA_BAYER = np.array([
     [ 0, -1,  1, -1,  1, -1,  1,  0]
 ], dtype=TYPE)
 
-# Normalização Cintra-Bayer: usa apenas 1/sqrt(8) (normalização DCT padrão)
 # sqrt(8) ≈ 2.828427
-# Escalado por SCALE_CONST=1000 para aritmética inteira
 SQRT_8 = 2828  # sqrt(8) * 1000 ≈ 2828
 
-# Matriz S completa (para referência/comparação, não usada na aproximação)
-S_CINTRA_MATRIX = np.array([
-    [ 418,   0,   0, -37, -37,   0,   0,   9],
-    [   0, 418, -37,   0,   0, -37,   9,   0],
-    [   0, -37, 418,   0,   0,   9, -37,   0],
-    [ -37,   0,   0, 418,   9,   0,   0, -37],
-    [ -37,   0,   0,   9, 418,   0,   0, -37],
-    [   0, -37,   9,   0,   0, 418, -37,   0],
-    [   0,   9, -37,   0,   0, -37, 418,   0],
-    [   9,   0,   0, -37, -37,   0,   0, 418]
-], dtype=TYPE)
+
 
 # Q50_LUMA = np.ones((8, 8), dtype=TYPE)
 # Q50_CHROMA = np.ones((8, 8), dtype=TYPE)

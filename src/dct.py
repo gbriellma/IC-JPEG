@@ -54,32 +54,50 @@ def idct_2d(block_dct_8x8, func_idct_1d):
 
 # ----------------- MATRIX DCT -----------------
 def dct_matrix_1d(x):
-    # X[k] = C[k] * sum(x[n] * cos(pi*k*(2n+1)/(2N)))
+    # DCT-II: X[k] = C[k] * sum(x[n] * cos(pi*k*(2n+1)/(2N)))
+    # C[0] = sqrt(1/N), C[k] = sqrt(2/N) for k>0
     import math
     v = np.asarray(x, dtype=np.int64).flatten()
     X = np.zeros(8, dtype=np.int64)
-    c0 = int(round(math.sqrt(1.0/8) * SCALE_CONST))
-    c = int(round(math.sqrt(2.0/8) * SCALE_CONST))
     
     for k in range(8):
-        soma = sum(v[n] * int(round(math.cos(math.pi * k * (2*n + 1) / 16) * SCALE_CONST)) 
-                   for n in range(8))
-        X[k] = (soma * (c0 if k == 0 else c)) // (SCALE_CONST * SCALE_CONST)
+        soma = 0
+        for n in range(8):
+            cos_val = int(round(math.cos(math.pi * k * (2*n + 1) / 16) * SCALE_CONST))
+            soma += v[n] * cos_val
+        
+        if k == 0:
+            # C[0] = sqrt(1/8)
+            c = int(round(math.sqrt(1.0/8) * SCALE_CONST))
+        else:
+            # C[k] = sqrt(2/8)
+            c = int(round(math.sqrt(2.0/8) * SCALE_CONST))
+        
+        X[k] = (soma * c) // (SCALE_CONST * SCALE_CONST)
     
     return X.astype(TYPE)
 
 def idct_matrix_1d(X):
-    # x[n] = sum(C[k] * X[k] * cos(pi*k*(2n+1)/(2N)))
+    # IDCT-II: x[n] = sum(C[k] * X[k] * cos(pi*k*(2n+1)/(2N)))
+    # C[0] = sqrt(1/N), C[k] = sqrt(2/N) for k>0
     import math
     v = np.asarray(X, dtype=np.int64).flatten()
     x = np.zeros(8, dtype=np.int64)
-    c0 = int(round(math.sqrt(1.0/8) * SCALE_CONST))
-    c = int(round(math.sqrt(2.0/8) * SCALE_CONST))
     
     for n in range(8):
-        soma = sum(v[k] * (c0 if k == 0 else c) * 
-                   int(round(math.cos(math.pi * k * (2*n + 1) / 16) * SCALE_CONST)) 
-                   // (SCALE_CONST * SCALE_CONST) for k in range(8))
+        soma = 0
+        for k in range(8):
+            cos_val = int(round(math.cos(math.pi * k * (2*n + 1) / 16) * SCALE_CONST))
+            
+            if k == 0:
+                # C[0] = sqrt(1/8)
+                c = int(round(math.sqrt(1.0/8) * SCALE_CONST))
+            else:
+                # C[k] = sqrt(2/8)
+                c = int(round(math.sqrt(2.0/8) * SCALE_CONST))
+            
+            soma += (v[k] * c * cos_val) // (SCALE_CONST * SCALE_CONST)
+        
         x[n] = soma
     
     return x.astype(TYPE)
