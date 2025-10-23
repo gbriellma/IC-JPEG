@@ -1,16 +1,29 @@
 import os, time
 from PIL import Image
 import numpy as np
-from dct import dct_loeffler_1d, idct_loeffler_1d
+from dct import dct_loeffler_1d, idct_loeffler_1d, dct_matrix_1d, idct_matrix_1d, dct_approximate_1d, idct_approximate_1d
 from pipeline import process_channel, rgb_to_ycbcr, ycbcr_to_rgb
 from constantes import Q50_LUMA, Q50_CHROMA
 from plots import quality_metrics, compute_bitrate, print_results, plot_psnr, plot_ssim, plot_bitrate, plot_dataset
 
+# ---------------- CONFIGURATION ----------------
+DCT_METHOD = 'matrix'  # loeffler | matrix | approximate
 INPUT_DIR = 'src/imgs'
-RESULTS_DIR = 'results_loeffler'
-PLOTS_DIR = 'plots_loeffler'
-#K_FACTORS = [1.0]
 K_FACTORS = [2.0, 5.0, 10.0, 15.0]
+#K_FACTORS = [1.0]
+
+# ----------------- METHOD SELECTION -----------------
+if DCT_METHOD == 'loeffler':
+    dct_1d, idct_1d = dct_loeffler_1d, idct_loeffler_1d
+elif DCT_METHOD == 'matrix':
+    dct_1d, idct_1d = dct_matrix_1d, idct_matrix_1d
+elif DCT_METHOD == 'approximate':
+    dct_1d, idct_1d = dct_approximate_1d, idct_approximate_1d
+else:
+    raise ValueError("Method must be 'loeffler', 'matrix', or 'approximate'")
+
+RESULTS_DIR = f'results_{DCT_METHOD}'
+PLOTS_DIR = f'plots_{DCT_METHOD}'
 
 def process_image(path):
     img = Image.open(path).convert('RGB')
@@ -22,9 +35,9 @@ def process_image(path):
     start_total = time.perf_counter()
     for k in K_FACTORS:
         t0 = time.perf_counter()
-        y_rec, y_q = process_channel(y, Q50_LUMA, k, dct_loeffler_1d, idct_loeffler_1d)
-        cb_rec, cb_q = process_channel(cb, Q50_CHROMA, k, dct_loeffler_1d, idct_loeffler_1d)
-        cr_rec, cr_q = process_channel(cr, Q50_CHROMA, k, dct_loeffler_1d, idct_loeffler_1d)
+        y_rec, y_q = process_channel(y, Q50_LUMA, k, dct_1d, idct_1d)
+        cb_rec, cb_q = process_channel(cb, Q50_CHROMA, k, dct_1d, idct_1d)
+        cr_rec, cr_q = process_channel(cr, Q50_CHROMA, k, dct_1d, idct_1d)
         recon = ycbcr_to_rgb(y_rec, cb_rec, cr_rec)
         subdir = os.path.join(RESULTS_DIR, os.path.basename(path).split('.')[0])
         os.makedirs(subdir, exist_ok=True)
@@ -51,6 +64,9 @@ def process_image(path):
     return results, total_ms, bitrate_list
 
 def process_dataset():
+    print(f'\n{"="*60}')
+    print(f'SELECTED DCT METHOD: {DCT_METHOD.upper()}')
+    print(f'{"="*60}\n')
     os.makedirs(RESULTS_DIR, exist_ok=True)
     os.makedirs(PLOTS_DIR, exist_ok=True)
     files = [f for f in os.listdir(INPUT_DIR) if f.lower().endswith(('.png','.jpg','.jpeg','.bmp'))]
