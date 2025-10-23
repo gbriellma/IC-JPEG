@@ -1,24 +1,27 @@
 # DCT Image Compression & Analysis Tool
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 
 A Python tool to compress images using a DCT-based pipeline (similar to JPEG) and analyze the trade-offs between compression level, quality, and performance across three different DCT implementations.
 
-This project implements and compares three DCT methods based on research papers, including color space transformation, quantization, and comprehensive quality metrics analysis.
+This project implements and compares three DCT methods based on research papers, including color space transformation, quantization, and comprehensive quality metrics analysis. All implementations use **pure Python with integer arithmetic** for educational purposes and fair comparison.
 
 ## ✨ Key Features
 
 -   **JPEG-like Pipeline**: Implements the core compression steps: RGB to YCbCr conversion, 8x8 block processing, DCT, Quantization (Q50 standard tables), and the inverse operations.
--   **Three DCT Implementations**:
-    -   **Loeffler Fast DCT**: Optimized algorithm with only 11 multiplications (from Loeffler et al. paper)
+-   **Three DCT Implementations** (all in pure Python):
+    -   **Loeffler Fast DCT**: Optimized algorithm with only 11 multiplications (Loeffler et al. 1989)
     -   **Matrix DCT**: Pure mathematical implementation using direct DCT-II formula
-    -   **Approximate DCT**: BAS-2008 low-complexity approximation (from Cintra-Bayer paper)
--   **Configurable Compression**: Easily adjust the compression level (`k-factors`) to study its impact on the output.
+    -   **Approximate DCT**: Cintra-Bayer 2011 low-complexity approximation with integer-only matrix (values {-1, 0, 1})
+-   **Dual Comparison Modes**: 
+    -   **K-Factor Mode**: Compare methods across different compression factors [2.0, 5.0, 10.0, 15.0]
+    -   **Bitrate Mode**: Compare methods at target bitrates [0.1, 0.25, 0.5, 1.0 bpp]
 -   **📊 Comprehensive Analysis**: Automatically calculates and plots key metrics:
     -   PSNR (Peak Signal-to-Noise Ratio)
     -   SSIM (Structural Similarity Index)
     -   Processing Time (ms)
     -   Bitrate estimation (bpp - bits per pixel)
+    -   Rate-Distortion Efficiency (PSNR/bpp)
 -   **Method Comparison**: Built-in comparison tool (`compare_methods.py`) that evaluates all three DCT methods on the same dataset.
 -   **Rich Visualizations**: Generates multiple plots for each image, including quality vs. compression factor, performance trade-offs, and dataset-wide summary boxplots.
 -   **Organized Output**: Saves compressed images, plots, and numerical results into structured output directories.
@@ -73,16 +76,6 @@ The compression process follows these main steps for each image:
     python src/main.py
     ```
 
-### Compare All Methods
-
-To compare all three DCT implementations on the same dataset:
-
-```sh
-python compare_methods.py
-```
-
-This will generate comparative plots and metrics for Loeffler, Matrix, and Approximate methods.
-
 ## 📈 Output
 
 After running, the script will generate directories based on the selected method:
@@ -93,47 +86,63 @@ After running, the script will generate directories based on the selected method
     - Dataset summary boxplots
     - Detailed metrics in `results.txt` files
 
-For `compare_methods.py`:
--   `comparison_results/`: Comparative plots showing all three methods side-by-side
-
 ## 🔬 DCT Methods Comparison
 
 ### Performance Characteristics
 
-| Method | Quality (PSNR) | Speed | Accuracy | Use Case |
-|--------|---------------|-------|----------|----------|
-| **Loeffler** | ⭐⭐⭐⭐⭐ (26.06 dB) | ⚡⚡⚡ Fast (2.5s) | Exact |
-| **Matrix** | ⭐⭐⭐⭐⭐ (25.90 dB) | ⚡ Slow (13.7s) | Exact |
-| **Approximate** | ⭐⭐⭐⭐ (25.34 dB) | ⚡⚡⚡ Fast (2.2s) | ~2-5% error |
+| Method | Quality (PSNR) | Speed | Complexity | Accuracy |
+|--------|---------------|-------|------------|----------|
+| **Approximate** | ⭐⭐⭐⭐ (24.38 dB) | ⚡⚡⚡⚡ Fastest (~2.0s) | 0 multiplications | Approximate |
+| **Loeffler** | ⭐⭐⭐⭐⭐ (26.06 dB) | ⚡⚡⚡ Fast (~2.8s) | 11 multiplications | Exact |
+| **Matrix** | ⭐⭐⭐⭐⭐ (25.90 dB) | ⚡ Slowest (~15.4s) | 64 multiplications | Exact |
 
-*Benchmark results averaged across test dataset with k-factors [2.0, 5.0, 10.0, 15.0]*
+*Benchmark results using pure Python implementation with k=10.0*
 
 ### Implementation Details
 
-- **Loeffler**: 11 multiplications, butterfly operations, optimized for speed
-- **Matrix**: Direct DCT-II formula implementation with N²=64 multiplications  
-- **Approximate**: BAS-2008 algorithm, integer-only operations, no trigonometric functions
+- **Approximate (Cintra-Bayer 2011)**: 
+  - Uses integer-only T matrix with values {-1, 0, 1}
+  - Only normalization by 1/√8 required (no S matrix)
+  - Zero multiplications in matrix operations
+  - **26% faster than Loeffler** in Python implementation
+  - ~1.5-2 dB PSNR reduction compared to exact methods
+  
+- **Loeffler (1989)**: 
+  - 11 multiplications per 1D-DCT
+  - Butterfly structure with optimized data flow
+  - Numerically exact DCT-II
+  - Good balance between speed and quality
+  
+- **Matrix**: 
+  - Direct DCT-II formula: `Y[k] = Σ x[n]·cos(π·k·(2n+1)/(2N))`
+  - 64 multiplications per 8x8 block
+  - Reference implementation for validation
+  - Slowest but most straightforward
 
 All methods use:
-- Standard JPEG Q50 quantization tables (from Wallace paper)
-- Integer arithmetic (scale factor 1000) for precision
-- Same quantization pipeline for fair comparison
+- **Integer arithmetic** (scale factor 1000) for consistency
+- Standard JPEG **Q50 quantization tables** (Wallace 1992)
+- Same pipeline: YCbCr conversion → 8x8 blocks → DCT → Quantization → IDCT → RGB
 
 ## 📚 References
 
-This project is based on the following research papers (available in `PDFs/`):
+This project is based on the following research papers:
 
 1. **Loeffler, C., Ligtenberg, A., & Moschytz, G. S. (1989)**  
    "Practical fast 1-D DCT algorithms with 11 multiplications"  
-   *Proceedings of the International Conference on Acoustics, Speech, and Signal Processing*
+   *Proceedings of the International Conference on Acoustics, Speech, and Signal Processing*  
+   - Butterfly structure with optimal multiplication count
 
 2. **Wallace, G. K. (1992)**  
    "The JPEG still picture compression standard"  
-   *IEEE Transactions on Consumer Electronics, 38(1)*
+   *IEEE Transactions on Consumer Electronics, 38(1)*  
+   - Standard Q50 quantization tables used in this implementation
 
 3. **Cintra, R. J., & Bayer, F. M. (2011)**  
    "A DCT approximation for image compression"  
-   *IEEE Signal Processing Letters, 18(10)*
+   *IEEE Signal Processing Letters, 18(10), 579-583*  
+   - Integer-only T matrix approximation with {-1, 0, 1} values
+   - Normalization by 1/√8 only (no separate S matrix needed)
 
 ## 📄 License
 
@@ -146,29 +155,32 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ---
 ---
 
-### 🇧🇷 Versão em Português (`README.md`)
+### 🇧🇷 Versão em Português
 
 # Ferramenta de Compressão e Análise de Imagens com DCT
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 
 Uma ferramenta em Python para comprimir imagens usando um pipeline baseado em DCT e analisar os trade-offs entre nível de compressão, qualidade e performance.
 
-Este projeto aplica conceitos centrais de processamento de imagens, incluindo transformação de espaço de cores, Transformada Discreta de Cosseno (DCT) e quantização para comprimir imagens, gerando em seguida relatórios de desempenho e visualizações detalhadas.
+Este projeto implementa e compara três métodos DCT baseados em artigos científicos, incluindo transformação de espaço de cores, quantização e análise completa de métricas de qualidade. **Todas as implementações usam Python puro com aritmética inteira** para fins educacionais e comparação justa.
 
 ## ✨ Principais Funcionalidades
 
 -   **Pipeline similar ao JPEG**: Implementa os passos principais de compressão: conversão de RGB para YCbCr, processamento em blocos 8x8, DCT, Quantização (tabelas Q50 padrão) e as operações inversas.
--   **Três Implementações de DCT**:
-    -   **DCT Rápida de Loeffler**: Algoritmo otimizado com apenas 11 multiplicações (baseado no paper de Loeffler et al.)
+-   **Três Implementações de DCT** (todas em Python puro):
+    -   **DCT Rápida de Loeffler**: Algoritmo otimizado com apenas 11 multiplicações (Loeffler et al. 1989)
     -   **DCT Matricial**: Implementação matemática pura usando fórmula direta da DCT-II
-    -   **DCT Aproximada**: Aproximação BAS-2008 de baixa complexidade (baseado no paper de Cintra-Bayer)
--   **Compressão Configurável**: Ajuste facilmente o nível de compressão (`fatores k`) para estudar seu impacto no resultado.
+    -   **DCT Aproximada**: Aproximação Cintra-Bayer 2011 de baixa complexidade com matriz inteira (valores {-1, 0, 1})
+-   **Dois Modos de Comparação**:
+    -   **Modo K-Factor**: Compara métodos em diferentes fatores de compressão [2.0, 5.0, 10.0, 15.0]
+    -   **Modo Bitrate**: Compara métodos em taxas de bits alvo [0.1, 0.25, 0.5, 1.0 bpp]
 -   **📊 Análise Completa**: Calcula e plota automaticamente métricas essenciais:
     -   PSNR (Peak Signal-to-Noise Ratio)
     -   SSIM (Structural Similarity Index)
     -   Tempo de Processamento (ms)
     -   Estimativa de taxa de bits (bpp - bits por pixel)
+    -   Eficiência Rate-Distortion (PSNR/bpp)
 -   **Comparação de Métodos**: Ferramenta integrada (`compare_methods.py`) que avalia os três métodos DCT no mesmo dataset.
 -   **Visualizações Ricas**: Gera múltiplos gráficos para cada imagem, incluindo qualidade vs. fator de compressão, trade-offs de performance e boxplots que resumem os resultados de todo o dataset.
 -   **Saída Organizada**: Salva as imagens comprimidas, os gráficos e os resultados numéricos em diretórios de saída estruturados.
@@ -223,15 +235,6 @@ O processo de compressão segue os seguintes passos para cada imagem:
     python src/main.py
     ```
 
-### Comparar Todos os Métodos
-
-Para comparar as três implementações DCT no mesmo dataset:
-
-```sh
-python compare_methods.py
-```
-
-Isso irá gerar gráficos comparativos e métricas para os métodos Loeffler, Matricial e Aproximado.
 
 ## 📈 Saída
 
@@ -243,22 +246,43 @@ Após a execução, o script irá gerar diretórios baseados no método selecion
     - Boxplots resumindo todo o dataset
     - Métricas detalhadas em arquivos `results.txt`
 
-Para `compare_methods.py`:
--   `comparison_results/`: Gráficos comparativos mostrando os três métodos lado a lado
-
 ## 🔬 Comparação dos Métodos DCT
 
 ### Características de Performance
 
-| Método | Qualidade (PSNR) | Velocidade | Precisão | Caso de Uso |
-|--------|-----------------|-----------|----------|-------------|
-| **Loeffler** | ⭐⭐⭐⭐⭐ (26.06 dB) | ⚡⚡⚡ Rápido (2.5s) | Exata | Produção - Melhor equilíbrio |
-| **Matricial** | ⭐⭐⭐⭐⭐ (25.90 dB) | ⚡ Lento (13.7s) | Exata | Referência - Educacional |
-| **Aproximada** | ⭐⭐⭐⭐ (25.34 dB) | ⚡⚡⚡ Rápido (2.2s) | ~2-5% erro | Dispositivos de baixa potência |
+| Método | Qualidade (PSNR) | Velocidade | Complexidade | Precisão |
+|--------|-----------------|-----------|--------------|----------|
+| **Aproximada** | ⭐⭐⭐⭐ (24.38 dB) | ⚡⚡⚡⚡ Mais Rápida (~2.0s) | 0 multiplicações | Aproximada |
+| **Loeffler** | ⭐⭐⭐⭐⭐ (26.06 dB) | ⚡⚡⚡ Rápida (~2.8s) | 11 multiplicações | Exata |
+| **Matricial** | ⭐⭐⭐⭐⭐ (25.90 dB) | ⚡ Mais Lenta (~15.4s) | 64 multiplicações | Exata |
 
-*Resultados de benchmark médios do dataset de teste com fatores k [2.0, 5.0, 10.0, 15.0]*
+*Resultados de benchmark usando implementação Python pura com k=10.0*
 
 ### Detalhes de Implementação
+
+- **Aproximada (Cintra-Bayer 2011)**: 
+  - Usa matriz T inteira com valores {-1, 0, 1}
+  - Apenas normalização por 1/√8 necessária (sem matriz S)
+  - Zero multiplicações nas operações matriciais
+  - **26% mais rápida que Loeffler** na implementação Python
+  - Redução de ~1.5-2 dB PSNR comparada aos métodos exatos
+  
+- **Loeffler (1989)**: 
+  - 11 multiplicações por 1D-DCT
+  - Estrutura butterfly com fluxo de dados otimizado
+  - DCT-II numericamente exata
+  - Bom equilíbrio entre velocidade e qualidade
+  
+- **Matricial**: 
+  - Fórmula direta da DCT-II: `Y[k] = Σ x[n]·cos(π·k·(2n+1)/(2N))`
+  - 64 multiplicações por bloco 8x8
+  - Implementação de referência para validação
+  - Mais lenta mas mais direta
+
+Todos os métodos usam:
+- **Aritmética inteira** (fator de escala 1000) para consistência
+- **Tabelas de quantização Q50** padrão JPEG (Wallace 1992)
+- Mesmo pipeline: conversão YCbCr → blocos 8x8 → DCT → Quantização → IDCT → RGB
 
 - **Loeffler**: 11 multiplicações, operações butterfly, otimizado para velocidade
 - **Matricial**: Implementação direta da fórmula DCT-II com N²=64 multiplicações
