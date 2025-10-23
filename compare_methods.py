@@ -1,7 +1,4 @@
-"""
-Comparison script to analyze all three DCT methods on the same dataset
-Generates comparative plots and metrics
-"""
+
 import os
 import sys
 import time

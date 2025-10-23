@@ -84,69 +84,66 @@ def idct_2d(block_dct_8x8, func_idct_1d):
 # ----------------- MATRIX DCT IMPLEMENTATION -----------------
 def dct_matrix_1d(x):
     """
-    DCT-II 1D using direct mathematical definition.
-    Matrix implementation for comparative performance analysis.
-    Uses int64 internally to avoid overflow, outputs int32.
+    Formula: X[k] = C[k] * sum(x[n] * cos(pi*k*(2n+1)/(2N))) for n=0..N-1
+    where C[0] = sqrt(1/N), C[k>0] = sqrt(2/N)
     """
     import math
     N = 8
-    v = np.asarray(x, dtype=np.int64).flatten()  # Use int64 internally
+    v = np.asarray(x, dtype=np.int64).flatten()
     X = np.zeros(N, dtype=np.int64)
+    
+    # sqrt(2) = 1.41421356... ≈ 1.414
+    sqrt_2_scaled = int(round(math.sqrt(2.0) * SCALE_CONST))  # ≈ 1414
+    sqrt_1_over_N = int(round(math.sqrt(1.0/N) * SCALE_CONST))  # sqrt(1/8) ≈ 354
+    sqrt_2_over_N = int(round(math.sqrt(2.0/N) * SCALE_CONST))  # sqrt(2/8) ≈ 500
     
     for k in range(N):
         soma = 0
         for n in range(N):
-            # Calculate cos(pi * k * (2n + 1) / 16) and scale by SCALE_CONST
-            angle = math.pi * k * (2 * n + 1) / 16.0
+            angle = math.pi * k * (2 * n + 1) / (2.0 * N)
             cos_val = int(round(math.cos(angle) * SCALE_CONST))
             soma += v[n] * cos_val
         
-        # Apply normalization: alpha * sqrt(2/N)
-        # alpha = 1/sqrt(2) for k=0, else 1
-        # sqrt(2/8) = 1/2, so final scale is 1/(2*sqrt(2)) for k=0, 1/2 for others
         if k == 0:
-            # For DC: multiply by 1/sqrt(2) * sqrt(2/8) = 1/sqrt(2) * 1/2 = 1/(2*sqrt(2))
-            # Divide by (2 * SQRT_2)
-            X[k] = soma // (2 * SQRT_2)
+            # C[0] = sqrt(1/N)
+            X[k] = (soma * sqrt_1_over_N) // (SCALE_CONST * SCALE_CONST)
         else:
-            # For AC: multiply by sqrt(2/8) = 1/2
-            # Divide by 2 * SCALE_CONST
-            X[k] = soma // (2 * SCALE_CONST)
+            # C[k] = sqrt(2/N)
+            X[k] = (soma * sqrt_2_over_N) // (SCALE_CONST * SCALE_CONST)
     
-    return X.astype(TYPE)  # Convert back to int32 for output
+    return X.astype(TYPE)
 
 def idct_matrix_1d(X):
     """
-    IDCT-II 1D using direct mathematical definition.
-    Matrix implementation for comparative performance analysis.
-    Uses int64 internally to avoid overflow, outputs int32.
+    IDCT-II 1D - Pure matrix implementation.
+    Formula: x[n] = sum(C[k] * X[k] * cos(pi*k*(2n+1)/(2N))) for k=0..N-1
+    where C[0] = sqrt(1/N), C[k>0] = sqrt(2/N)
     """
     import math
     N = 8
-    # Multiply by 2 to reverse the division by 2 from forward DCT
-    v = np.asarray(X, dtype=np.int64).flatten() * 2
+    v = np.asarray(X, dtype=np.int64).flatten()
     x = np.zeros(N, dtype=np.int64)
+    
+    sqrt_1_over_N = int(round(math.sqrt(1.0/N) * SCALE_CONST))  # sqrt(1/8) ≈ 354
+    sqrt_2_over_N = int(round(math.sqrt(2.0/N) * SCALE_CONST))  # sqrt(2/8) ≈ 500
     
     for n in range(N):
         soma = 0
         for k in range(N):
-            # Calculate cos(pi * k * (2n + 1) / 16) and scale by SCALE_CONST
-            angle = math.pi * k * (2 * n + 1) / 16.0
+            angle = math.pi * k * (2 * n + 1) / (2.0 * N)
             cos_val = int(round(math.cos(angle) * SCALE_CONST))
             
-            # Apply alpha factor (1/sqrt(2) for k=0, 1 otherwise)
             if k == 0:
-                # DC coefficient: multiply by SQRT_2 to match Loeffler's approach
-                soma += (v[k] * cos_val * SQRT_2) // SCALE_CONST
+                # C[0] = sqrt(1/N)
+                contrib = (v[k] * sqrt_1_over_N * cos_val) // (SCALE_CONST * SCALE_CONST)
             else:
-                # AC coefficients
-                soma += v[k] * cos_val
+                # C[k] = sqrt(2/N)
+                contrib = (v[k] * sqrt_2_over_N * cos_val) // (SCALE_CONST * SCALE_CONST)
+            soma += contrib
         
-        # Divide by SCALE_CONST and then by 8 to match Loeffler's scale
-        # Loeffler divides by 2 multiple times (2^3 = 8)
-        x[n] = soma // (SCALE_CONST * 8)
+        x[n] = soma
     
-    return x.astype(TYPE)  # Convert back to int32 for output
+    return x.astype(TYPE)
 
 # ----------------- APPROXIMATE DCT IMPLEMENTATION (BAS-2008) -----------------
 def dct_approximate_1d(x):
