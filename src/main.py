@@ -7,7 +7,7 @@ from constantes import Q50_LUMA, Q50_CHROMA
 from plots import quality_metrics, compute_bitrate, print_results, plot_psnr, plot_ssim, plot_bitrate, plot_dataset
 
 # ---------------- CONFIGURATION ----------------
-DCT_METHOD = 'matrix'  # loeffler | matrix | approximate
+DCT_METHOD = 'approximate'  # loeffler | matrix | approximate
 INPUT_DIR = 'src/imgs'
 K_FACTORS = [2.0, 5.0, 10.0, 15.0]
 #K_FACTORS = [1.0]
@@ -21,6 +21,9 @@ elif DCT_METHOD == 'approximate':
     dct_1d, idct_1d = dct_approximate_1d, idct_approximate_1d
 else:
     raise ValueError("Method must be 'loeffler', 'matrix', or 'approximate'")
+
+# Usar mesmas matrizes de quantização para todos os métodos
+Q_LUMA, Q_CHROMA = Q50_LUMA, Q50_CHROMA
 
 RESULTS_DIR = f'results_{DCT_METHOD}'
 PLOTS_DIR = f'plots_{DCT_METHOD}'

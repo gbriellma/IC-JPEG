@@ -1,6 +1,5 @@
 import numpy as np
-from constantes import TYPE, C1, S1, C3, S3, C6, S6, SQRT_2, SCALE_CONST
-from constantes import A_APPROX, B_APPROX, C_APPROX, D_APPROX, E_APPROX, F_APPROX, APPROX_SHIFT, APPROX_SCALE_FACTOR
+from constantes import TYPE, C1, S1, C3, S3, C6, S6, SQRT_2, SCALE_CONST, T_CINTRA_BAYER, SQRT_8
 
 def dct_loeffler_1d(input_vector):
     v = np.asarray(input_vector, dtype=TYPE).flatten()
@@ -145,132 +144,46 @@ def idct_matrix_1d(X):
     
     return x.astype(TYPE)
 
-# ----------------- APPROXIMATE DCT IMPLEMENTATION (BAS-2008) -----------------
+# ----------------- APPROXIMATE DCT IMPLEMENTATION (CINTRA-BAYER 2011) -----------------
 def dct_approximate_1d(x):
+    """
+    1D DCT Aproximada de Cintra-Bayer (2011).
+    
+    Usa matriz T com apenas {-1, 0, 1} e normalização padrão 1/sqrt(8).
+    MUITO MAIS RÁPIDO: apenas somas/subtrações, sem multiplicações complexas!
+    
+    Forward: Y = (1/sqrt(8)) * T * x
+    """
+    v = np.asarray(x, dtype=np.int64).flatten()
+    
+    # Apply T matrix: temp = T * v (apenas somas/subtrações com {-1,0,1})
+    temp = np.zeros(8, dtype=np.int64)
+    for k in range(8):
+        temp[k] = sum(T_CINTRA_BAYER[k, n] * v[n] for n in range(8))
+    
+    # Normalize by 1/sqrt(8): Y = temp / sqrt(8)
+    Y = (temp * SCALE_CONST) // SQRT_8
+    
+    return Y.astype(TYPE)
 
-
-
-    v = np.asarray(x, dtype=TYPE).flatten()
+def idct_approximate_1d(Y):
+    """
+    1D IDCT Aproximada de Cintra-Bayer (2011).
     
-    # Stage 1: Butterfly operations (additions/subtractions)
-    x0, x1, x2, x3 = v[0], v[1], v[2], v[3]
-    x4, x5, x6, x7 = v[4], v[5], v[6], v[7]
+    Inversa da dct_approximate_1d.
+    Inverse: x = (1/sqrt(8)) * T^T * Y
+    """
+    v = np.asarray(Y, dtype=np.int64).flatten()
     
-    a0 = x0 + x7
-    a1 = x1 + x6
-    a2 = x2 + x5
-    a3 = x3 + x4
-    a4 = x0 - x7
-    a5 = x1 - x6
-    a6 = x2 - x5
-    a7 = x3 - x4
+    # Apply T^T: temp = T^T * Y (apenas somas/subtrações com {-1,0,1})
+    temp = np.zeros(8, dtype=np.int64)
+    for n in range(8):
+        soma = 0
+        for k in range(8):
+            soma += T_CINTRA_BAYER[k, n] * v[k]  # T^T[n,k] = T[k,n]
+        temp[n] = soma
     
-    # Stage 2: Even part
-    b0 = a0 + a3
-    b1 = a1 + a2
-    b2 = a0 - a3
-    b3 = a1 - a2
+    # Normalize by 1/sqrt(8): x = temp / sqrt(8)
+    x = (temp * SCALE_CONST) // SQRT_8
     
-    # Stage 3: DCT coefficients for even indices
-    # DC component and y4
-    y0 = b0 + b1
-    y4 = b0 - b1
-    
-    # y2 and y6 coefficients using approximate rotations
-    t0 = (b2 * E_APPROX) >> APPROX_SHIFT
-    t1 = (b3 * F_APPROX) >> APPROX_SHIFT
-    y2 = t0 + t1
-    
-    t2 = (b2 * F_APPROX) >> APPROX_SHIFT
-    t3 = (b3 * E_APPROX) >> APPROX_SHIFT
-    y6 = t2 - t3
-    
-    # Stage 4: Odd part
-    c0 = a4 + a7
-    c1 = a5 + a6
-    c2 = a5 - a6
-    c3 = a4 - a7
-    
-    # Stage 5: Odd DCT coefficients using approximate rotations
-    t4 = (c0 * C_APPROX) >> APPROX_SHIFT
-    t5 = (c1 * A_APPROX) >> APPROX_SHIFT
-    t6 = (c2 * B_APPROX) >> APPROX_SHIFT
-    t7 = (c3 * D_APPROX) >> APPROX_SHIFT
-    
-    d0 = t4 + t5
-    d1 = t6 + t7
-    d2 = t4 - t5
-    d3 = t6 - t7
-    
-    y1 = d0 + d1
-    y7 = d0 - d1
-    y5 = d2 + d3
-    y3 = d2 - d3
-    
-    result = np.array([y0, y1, y2, y3, y4, y5, y6, y7], dtype=TYPE) // 2
-    
-    return result
-
-def idct_approximate_1d(X):
-
-
-    v = np.asarray(X, dtype=TYPE).flatten() * 2  # Reverse the "/2" from forward
-    
-    # Unpack coefficients
-    y0, y1, y2, y3 = v[0], v[1], v[2], v[3]
-    y4, y5, y6, y7 = v[4], v[5], v[6], v[7]
-    
-    # Inverse Stage 5: Recover d0, d1, d2, d3 from y1, y7, y5, y3
-    d0 = (y1 + y7) // 2
-    d1 = (y1 - y7) // 2
-    d2 = (y5 + y3) // 2
-    d3 = (y5 - y3) // 2
-    
-    # Recover t4, t5, t6, t7 from d0, d1, d2, d3
-    t4 = (d0 + d2) // 2
-    t5 = (d0 - d2) // 2
-    t6 = (d1 + d3) // 2
-    t7 = (d1 - d3) // 2
-    
-    # Apply inverse rotations
-    c0 = (t4 * C_APPROX) >> APPROX_SHIFT
-    c1 = (t5 * A_APPROX) >> APPROX_SHIFT
-    c2 = (t6 * B_APPROX) >> APPROX_SHIFT
-    c3 = (t7 * D_APPROX) >> APPROX_SHIFT
-    
-    # Inverse Stage 4: Recover a4, a5, a6, a7
-    a4 = (c0 + c3) // 2
-    a7 = (c0 - c3) // 2
-    a5 = (c1 + c2) // 2
-    a6 = (c1 - c2) // 2
-    
-    # Inverse Stage 3: Recover b0, b1, b2, b3 from y0, y4, y2, y6
-    b0 = (y0 + y4) // 2
-    b1 = (y0 - y4) // 2
-    
-    # Inverse rotations for even part
-    t0_t1 = (y2 * F_APPROX) >> APPROX_SHIFT
-    t2_t3 = (y6 * E_APPROX) >> APPROX_SHIFT
-    b2 = (t0_t1 - t2_t3)
-    
-    t0_t1_2 = (y2 * E_APPROX) >> APPROX_SHIFT
-    t2_t3_2 = (y6 * F_APPROX) >> APPROX_SHIFT
-    b3 = (t0_t1_2 + t2_t3_2)
-    
-    # Inverse Stage 2
-    a0 = (b0 + b2) // 2
-    a3 = (b0 - b2) // 2
-    a1 = (b1 + b3) // 2
-    a2 = (b1 - b3) // 2
-    
-    # Inverse Stage 1: Final butterfly to recover x0...x7
-    x0 = (a0 + a4) // 2
-    x7 = (a0 - a4) // 2
-    x1 = (a1 + a5) // 2
-    x6 = (a1 - a5) // 2
-    x2 = (a2 + a6) // 2
-    x5 = (a2 - a6) // 2
-    x3 = (a3 + a7) // 2
-    x4 = (a3 - a7) // 2
-    
-    return np.array([x0, x1, x2, x3, x4, x5, x6, x7], dtype=TYPE)
+    return x.astype(TYPE)

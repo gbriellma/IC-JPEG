@@ -1,0 +1,14 @@
+# Core Scientific Computing
+numpy>=1.24.0
+
+# Image Processing
+Pillow>=10.0.0
+
+# Metrics and Analysis
+scikit-image>=0.21.0
+
+# Plotting and Visualization
+matplotlib>=3.7.0
+
+# Optional: For better performance
+scipy>=1.11.0
