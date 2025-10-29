@@ -93,9 +93,9 @@ After running, the script will generate directories based on the selected method
 
 | Method | Quality (PSNR) | Speed | Complexity | Accuracy |
 |--------|---------------|-------|------------|----------|
-| **Approximate** | ⭐⭐⭐⭐ (24.38 dB) | ⚡⚡⚡⚡ Fastest (~2.0s) | 0 multiplications | Approximate |
-| **Loeffler** | ⭐⭐⭐⭐⭐ (26.06 dB) | ⚡⚡⚡ Fast (~2.8s) | 11 multiplications | Exact |
-| **Matrix** | ⭐⭐⭐⭐⭐ (25.90 dB) | ⚡ Slowest (~15.4s) | 64 multiplications | Exact |
+| **Loeffler** | ⭐⭐⭐⭐⭐ | ⚡⚡⚡⚡ Fastest (~1.7s) | 11 multiplications | Exact |
+| **Approximate** | ⭐⭐⭐⭐ | ⚡⚡⚡ Fast (~1.8s) | 0 multiplications | Approximate |
+| **Matrix** | ⭐⭐⭐⭐⭐ | ⚡ Slowest (~12.3s) | 64 multiplications | Exact |
 
 *Benchmark results using pure Python implementation with k=10.0*
 
@@ -105,7 +105,7 @@ After running, the script will generate directories based on the selected method
   - Uses integer-only T matrix with values {-1, 0, 1}
   - Only normalization by 1/√8 required (no S matrix)
   - Zero multiplications in matrix operations
-  - **26% faster than Loeffler** in Python implementation
+  - **~4% slower than Loeffler** in Python implementation (despite zero multiplications)
   - ~1.5-2 dB PSNR reduction compared to exact methods
   
 - **Loeffler (1989)**: 
@@ -253,9 +253,9 @@ Após a execução, o script irá gerar diretórios baseados no método selecion
 
 | Método | Qualidade (PSNR) | Velocidade | Complexidade | Precisão |
 |--------|-----------------|-----------|--------------|----------|
-| **Aproximada** | ⭐⭐⭐⭐ (24.38 dB) | ⚡⚡⚡⚡ Mais Rápida (~2.0s) | 0 multiplicações | Aproximada |
-| **Loeffler** | ⭐⭐⭐⭐⭐ (26.06 dB) | ⚡⚡⚡ Rápida (~2.8s) | 11 multiplicações | Exata |
-| **Matricial** | ⭐⭐⭐⭐⭐ (25.90 dB) | ⚡ Mais Lenta (~15.4s) | 64 multiplicações | Exata |
+| **Loeffler** | ⭐⭐⭐⭐⭐ | ⚡⚡⚡⚡ Mais Rápida (~1.7s) | 11 multiplicações | Exata |
+| **Aproximada** | ⭐⭐⭐⭐ | ⚡⚡⚡ Rápida (~1.8s) | 0 multiplicações | Aproximada |
+| **Matricial** | ⭐⭐⭐⭐⭐ | ⚡ Mais Lenta (~12.3s) | 64 multiplicações | Exata |
 
 *Resultados de benchmark usando implementação Python pura com k=10.0*
 
@@ -265,7 +265,7 @@ Após a execução, o script irá gerar diretórios baseados no método selecion
   - Usa matriz T inteira com valores {-1, 0, 1}
   - Apenas normalização por 1/√8 necessária (sem matriz S)
   - Zero multiplicações nas operações matriciais
-  - **26% mais rápida que Loeffler** na implementação Python
+  - **~4% mais lenta que Loeffler** na implementação Python (apesar de zero multiplicações)
   - Redução de ~1.5-2 dB PSNR comparada aos métodos exatos
   
 - **Loeffler (1989)**: 
