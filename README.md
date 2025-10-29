@@ -1,6 +1,6 @@
 # DCT Image Compression & Analysis Tool
 
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.8+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 
 A Python tool to compress images using a DCT-based pipeline (similar to JPEG) and analyze the trade-offs between compression level, quality, and performance across three different DCT implementations.
 
@@ -56,8 +56,9 @@ The compression process follows these main steps for each image:
 
 ### Prerequisites
 
--   Python 3.10 or higher
+-   Python 3.8 or higher (for Python implementation)
 -   `pip` and `venv`
+-   C++ compiler (g++ or clang) for C++ implementation
 
 ## 📋 Usage
 
@@ -159,7 +160,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 # Ferramenta de Compressão e Análise de Imagens com DCT
 
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
 Uma ferramenta em Python para comprimir imagens usando um pipeline baseado em DCT e analisar os trade-offs entre nível de compressão, qualidade e performance.
 
@@ -215,7 +216,7 @@ O processo de compressão segue os seguintes passos para cada imagem:
 
 ### Pré-requisitos
 
--   Python 3.10 ou superior
+-   Python 3.8 ou superior
 -   `pip` e `venv`
 
 ## 📋 Como Usar
