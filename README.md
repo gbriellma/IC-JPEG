@@ -296,7 +296,7 @@ Todos os métodos usam:
 
 ## 📚 Referências Bibliográficas
 
-Este projeto é baseado nos seguintes papers de pesquisa (disponíveis em `PDFs/`):
+Este projeto é baseado nos seguintes papers de pesquisa:
 
 1. **Loeffler, C., Ligtenberg, A., & Moschytz, G. S. (1989)**  
    "Practical fast 1-D DCT algorithms with 11 multiplications"  
