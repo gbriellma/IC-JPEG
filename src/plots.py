@@ -10,41 +10,55 @@ def quality_metrics(original, reconstructed):
     return psnr, ssim
 
 def compute_bitrate(quantized_blocks):
-    zigzag_indices = [
-        (0,0),(0,1),(1,0),(2,0),(1,1),(0,2),(0,3),(1,2),
-        (2,1),(3,0),(4,0),(3,1),(2,2),(1,3),(0,4),(0,5),
-        (1,4),(2,3),(3,2),(4,1),(5,0),(6,0),(5,1),(4,2),
-        (3,3),(2,4),(1,5),(0,6),(0,7),(1,6),(2,5),(3,4),
-        (4,3),(5,2),(6,1),(7,0),(7,1),(6,2),(5,3),(4,4),
-        (3,5),(2,6),(1,7),(2,7),(3,6),(4,5),(5,4),(6,3),
-        (7,2),(7,3),(6,4),(5,5),(4,6),(3,7),(4,7),(5,6),
-        (6,5),(7,4),(7,5),(6,6),(5,7),(6,7),(7,6),(7,7)
-    ]
-    def zigzag(block):
-        return np.array([block[i,j] for i,j in zigzag_indices])
-    blocks = quantized_blocks.reshape(-1,8,8)
-    total_last_count = 0
-    total_bits_amp = 0
-    last_indices = []
-    nonzero_counts = []
-    for block in blocks:
-        vec = zigzag(block)
-        nz = np.nonzero(vec)[0]
-        if nz.size == 0:
-            last_indices.append(-1)
-            nonzero_counts.append(0)
+    """
+    Calcula o bitrate baseado na posição do último coeficiente não-zero
+    em ordem zigzag
+
+    Para cada bloco 8x8:
+    1. Reordena coeficientes em zigzag
+    2. Encontra índice do último coeficiente não-zero
+    3. Calcula bits = (índice + 1) / 64 * 8
+    4. Média sobre todos os blocos
+    
+    Retorna bits por pixel na escala de 0-8 bits.
+    """
+    # Zigzag order para blocos 8x8
+    zigzag_order = np.array([
+        0,  1,  5,  6, 14, 15, 27, 28,
+        2,  4,  7, 13, 16, 26, 29, 42,
+        3,  8, 12, 17, 25, 30, 41, 43,
+        9, 11, 18, 24, 31, 40, 44, 53,
+       10, 19, 23, 32, 39, 45, 52, 54,
+       20, 22, 33, 38, 46, 51, 55, 60,
+       21, 34, 37, 47, 50, 56, 59, 61,
+       35, 36, 48, 49, 57, 58, 62, 63
+    ], dtype=np.int32)
+    
+    total_bits = 0
+    num_blocks = quantized_blocks.shape[0]
+    
+    for i in range(num_blocks):
+        block = quantized_blocks[i]
+        # Reordena em zigzag
+        flat = block.flatten()
+        zigzag = flat[zigzag_order]
+        
+        # Encontra índice do último coeficiente não-zero
+        nonzero_indices = np.nonzero(zigzag)[0]
+        if len(nonzero_indices) > 0:
+            last_nonzero_idx = nonzero_indices[-1]
+            # Calcula bits necessários: (posição + 1) / 64 * 8
+            bits_for_block = (last_nonzero_idx + 1) / 64.0 * 8.0
         else:
-            last_indices.append(int(nz[-1]))
-            nonzero_counts.append(int(nz.size))
-            total_last_count += int(nz[-1]) + 1
-        for v in vec:
-            if v != 0:
-                total_bits_amp += abs(int(v)).bit_length() + 1
-    mean_last = float(np.mean([li if li>=0 else 0 for li in last_indices])) if last_indices else 0.0
-    mean_nonzero = float(np.mean(nonzero_counts)) if nonzero_counts else 0.0
-    bpp_zigzag = ((mean_last + 1) * 8) / 64.0
-    bpp_amplitude = (total_bits_amp / len(blocks)) / 64.0 if len(blocks)>0 else 0.0
-    return {'mean_last': mean_last, 'mean_nonzero': mean_nonzero, 'bpp_zigzag': bpp_zigzag, 'bpp_amplitude': bpp_amplitude, 'total_last_count': total_last_count}
+            # Bloco todo zero (muito raro, mas possível)
+            bits_for_block = 0.125  # Pelo menos 1 coeficiente (DC)
+        
+        total_bits += bits_for_block
+    
+    # Média de bits por bloco = bits por pixel 
+    bpp = total_bits / num_blocks
+    
+    return {'bpp_amplitude': bpp}
 
 def results_table(results, total_time, image_name, directory):
     if not directory:
@@ -141,20 +155,21 @@ def plot_ssim(results, image_name, out_dir='plots'):
 
 def plot_bitrate(bitrate_list, image_name, out_dir='plots'):
     ks = [b[0] for b in bitrate_list]
-    bpp_z = [b[1]['bpp_zigzag'] for b in bitrate_list]
     bpp_amp = [b[1]['bpp_amplitude'] for b in bitrate_list]
     name = os.path.basename(image_name).split('.')[0]
     sub = os.path.join(out_dir, name)
     os.makedirs(sub, exist_ok=True)
     plt.figure(figsize=(8,5))
-    plt.plot(ks, bpp_z, marker='o', label='BPP ZigZag')
-    plt.plot(ks, bpp_amp, marker='s', label='BPP Amplitude')
-    plt.xlabel('k factor')
-    plt.ylabel('Bits per pixel (approx)')
-    plt.title('Bitrate vs k: ' + name)
+    plt.plot(ks, bpp_amp, marker='o', label='Bitrate', linewidth=2)
+    plt.xlabel('k factor', fontsize=11)
+    plt.ylabel('Bits per pixel', fontsize=11)
+    plt.title('Bitrate vs k: ' + name, fontsize=12)
+    # Define escala de 1 a 8 bits com marcadores
+    plt.yticks(range(1, 9))
+    plt.ylim(0, 8.5)
     plt.legend()
     plt.grid(True, linestyle='--', alpha=0.6)
-    plt.savefig(os.path.join(sub, name + '_bitrate.png'))
+    plt.savefig(os.path.join(sub, name + '_bitrate.png'), dpi=200, bbox_inches='tight')
     plt.close()
 
 def plot_dataset(results_global, bitrate_global, out_dir='plots'):
@@ -186,14 +201,15 @@ def plot_dataset(results_global, bitrate_global, out_dir='plots'):
         flat_bitrate = [item for sub in bitrate_global for item in sub]
         dfb = pd.DataFrame(flat_bitrate, columns=['k','stats','Image'])
         unique_k_b = sorted(dfb['k'].unique())
-        mean_bpp_z = [dfb[dfb['k']==k]['stats'].apply(lambda x: x['bpp_zigzag']).mean() for k in unique_k_b]
         mean_bpp_amp = [dfb[dfb['k']==k]['stats'].apply(lambda x: x['bpp_amplitude']).mean() for k in unique_k_b]
         plt.figure(figsize=(8,5))
-        plt.plot(unique_k_b, mean_bpp_z, marker='o', label='BPP ZigZag')
-        plt.plot(unique_k_b, mean_bpp_amp, marker='s', label='BPP Amplitude')
-        plt.xlabel('k factor')
-        plt.ylabel('Bits per pixel (approx)')
+        plt.plot(unique_k_b, mean_bpp_amp, marker='o', label='Bitrate', linewidth=2)
+        plt.xlabel('k factor', fontsize=11)
+        plt.ylabel('Bits per pixel', fontsize=11)
+        plt.title('Dataset Mean Bitrate', fontsize=12)
+        plt.yticks(range(1, 9))
+        plt.ylim(0, 8.5)
         plt.legend()
         plt.grid(True, linestyle='--', alpha=0.6)
-        plt.savefig(os.path.join(analysis, 'dataset_mean_bitrate.png'))
+        plt.savefig(os.path.join(analysis, 'dataset_mean_bitrate.png'), dpi=200, bbox_inches='tight')
         plt.close()

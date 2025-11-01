@@ -18,6 +18,7 @@ from plots import quality_metrics
 INPUT_DIR = 'src/imgs'
 OUTPUT_DIR = 'comparison_results'
 K_FACTORS = [2.0, 4.0, 6.0, 8.0]
+#K_FACTORS = [1.0]
 
 METHODS = {
     'Loeffler': (dct_loeffler_1d, idct_loeffler_1d),
@@ -45,12 +46,12 @@ def process_image_with_method(img_path, method_name, dct_func, idct_func):
         psnr_val, ssim_val = quality_metrics(arr, recon)
         time_ms = (t1 - t0) * 1000.0
         
-        # Calculate bitrate for all 3 channels
+        # Calculate bitrate for all 3 channels (média)
         from plots import compute_bitrate
         bitrate_y = compute_bitrate(quant_y)
         bitrate_cb = compute_bitrate(quant_cb)
         bitrate_cr = compute_bitrate(quant_cr)
-        bitrate = bitrate_y['bpp_amplitude'] + bitrate_cb['bpp_amplitude'] + bitrate_cr['bpp_amplitude']
+        bitrate = (bitrate_y['bpp_amplitude'] + bitrate_cb['bpp_amplitude'] + bitrate_cr['bpp_amplitude']) / 3.0
         
         results.append({
             'k': k,
@@ -195,9 +196,11 @@ def generate_bitrate_plots(results):
     ax = axes[0, 0]
     for method in methods:
         ax.plot(avg_bitrate[method], avg_psnr[method], marker='o', label=method, linewidth=2)
-    ax.set_xlabel('Bitrate (bpp)', fontsize=11)
+    ax.set_xlabel('Bitrate (bits per pixel)', fontsize=11)
     ax.set_ylabel('PSNR (dB)', fontsize=11)
     ax.set_title('PSNR vs Bitrate', fontsize=12, fontweight='bold')
+    ax.set_xticks(range(1, 9))
+    ax.set_xlim(0, 8.5)
     ax.legend()
     ax.grid(True, linestyle='--', alpha=0.6)
     
@@ -205,20 +208,23 @@ def generate_bitrate_plots(results):
     ax = axes[0, 1]
     for method in methods:
         ax.plot(avg_bitrate[method], avg_ssim[method], marker='s', label=method, linewidth=2)
-    ax.set_xlabel('Bitrate (bpp)', fontsize=11)
+    ax.set_xlabel('Bitrate (bits per pixel)', fontsize=11)
     ax.set_ylabel('SSIM', fontsize=11)
     ax.set_title('SSIM vs Bitrate', fontsize=12, fontweight='bold')
+    ax.set_xticks(range(1, 9))
+    ax.set_xlim(0, 8.5)
     ax.legend()
     ax.grid(True, linestyle='--', alpha=0.6)
     
-    # Rate-Distortion Efficiency (PSNR/bpp)
+    # Bitrate vs k-factor
     ax = axes[1, 0]
     for method in methods:
-        efficiency = [p / b if b > 0 else 0 for p, b in zip(avg_psnr[method], avg_bitrate[method])]
-        ax.plot(avg_bitrate[method], efficiency, marker='^', label=method, linewidth=2)
-    ax.set_xlabel('Bitrate (bpp)', fontsize=11)
-    ax.set_ylabel('PSNR/bpp (dB/bpp)', fontsize=11)
-    ax.set_title('Rate-Distortion Efficiency', fontsize=12, fontweight='bold')
+        ax.plot(k_vals, avg_bitrate[method], marker='^', label=method, linewidth=2)
+    ax.set_xlabel('k-factor', fontsize=11)
+    ax.set_ylabel('Bitrate (bits per pixel)', fontsize=11)
+    ax.set_title('Bitrate vs k-factor', fontsize=12, fontweight='bold')
+    ax.set_yticks(range(0, 9))
+    ax.set_ylim(0, 8.5)
     ax.legend()
     ax.grid(True, linestyle='--', alpha=0.6)
     
@@ -227,9 +233,11 @@ def generate_bitrate_plots(results):
     for method in methods:
         ax.scatter(avg_bitrate[method], avg_time[method], s=100, label=method, alpha=0.7)
         ax.plot(avg_bitrate[method], avg_time[method], alpha=0.3)
-    ax.set_xlabel('Bitrate (bpp)', fontsize=11)
+    ax.set_xlabel('Bitrate (bits per pixel)', fontsize=11)
     ax.set_ylabel('Processing Time (ms)', fontsize=11)
     ax.set_title('Processing Time vs Bitrate', fontsize=12, fontweight='bold')
+    ax.set_xticks(range(1, 9))
+    ax.set_xlim(0, 8.5)
     ax.legend()
     ax.grid(True, linestyle='--', alpha=0.6)
     
