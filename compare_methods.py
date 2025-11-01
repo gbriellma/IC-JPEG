@@ -17,7 +17,7 @@ from plots import quality_metrics
 
 INPUT_DIR = 'src/imgs'
 OUTPUT_DIR = 'comparison_results'
-K_FACTORS = [2.0, 5.0, 10.0, 15.0]
+K_FACTORS = [2.0, 4.0, 6.0, 8.0]
 
 METHODS = {
     'Loeffler': (dct_loeffler_1d, idct_loeffler_1d),
@@ -45,8 +45,12 @@ def process_image_with_method(img_path, method_name, dct_func, idct_func):
         psnr_val, ssim_val = quality_metrics(arr, recon)
         time_ms = (t1 - t0) * 1000.0
         
-        # Calculate bitrate (Y channel only for estimation)
-        bitrate = calc_bitrate_amplitude(quant_y)
+        # Calculate bitrate for all 3 channels
+        from plots import compute_bitrate
+        bitrate_y = compute_bitrate(quant_y)
+        bitrate_cb = compute_bitrate(quant_cb)
+        bitrate_cr = compute_bitrate(quant_cr)
+        bitrate = bitrate_y['bpp_amplitude'] + bitrate_cb['bpp_amplitude'] + bitrate_cr['bpp_amplitude']
         
         results.append({
             'k': k,

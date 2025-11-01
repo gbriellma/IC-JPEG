@@ -7,9 +7,9 @@ from constantes import Q50_LUMA, Q50_CHROMA
 from plots import quality_metrics, compute_bitrate, print_results, plot_psnr, plot_ssim, plot_bitrate, plot_dataset
 
 # ---------------- CONFIGURATION ----------------
-DCT_METHOD = 'approximate'  # loeffler | matrix | approximate
+DCT_METHOD = 'matrix'  # loeffler | matrix | approximate
 INPUT_DIR = 'src/imgs'
-K_FACTORS = [2.0, 5.0, 10.0, 15.0]
+K_FACTORS = [2.0, 4.0, 6.0, 8.0]
 #K_FACTORS = [1.0]
 
 # ----------------- METHOD SELECTION -----------------
@@ -54,14 +54,11 @@ def process_image(path):
         bitrate_stats_y = compute_bitrate(y_q)
         bitrate_stats_cb = compute_bitrate(cb_q)
         bitrate_stats_cr = compute_bitrate(cr_q)
-        combined_stats = {'bpp_zigzag': (bitrate_stats_y['bpp_zigzag']+bitrate_stats_cb['bpp_zigzag']+bitrate_stats_cr['bpp_zigzag'])/3.0,
-                          'bpp_amplitude': (bitrate_stats_y['bpp_amplitude']+bitrate_stats_cb['bpp_amplitude']+bitrate_stats_cr['bpp_amplitude'])/3.0,
-                          'mean_last': (bitrate_stats_y['mean_last']+bitrate_stats_cb['mean_last']+bitrate_stats_cr['mean_last'])/3.0,
-                          'mean_nonzero': (bitrate_stats_y['mean_nonzero']+bitrate_stats_cb['mean_nonzero']+bitrate_stats_cr['mean_nonzero'])/3.0,
-                          'total_last_count': bitrate_stats_y['total_last_count']+bitrate_stats_cb['total_last_count']+bitrate_stats_cr['total_last_count']}
+        combined_bpp = bitrate_stats_y['bpp_amplitude'] + bitrate_stats_cb['bpp_amplitude'] + bitrate_stats_cr['bpp_amplitude']
+        combined_stats = {'bpp_amplitude': combined_bpp}
         bitrate_list.append((k, combined_stats, os.path.basename(path)))
         t_ms = (t1 - t0) * 1000.0
-        results.append((k, psnr_val, ssim_val, t_ms, combined_stats['bpp_zigzag']))
+        results.append((k, psnr_val, ssim_val, t_ms, combined_stats['bpp_amplitude']))
     end_total = time.perf_counter()
     total_ms = (end_total - start_total) * 1000.0
     return results, total_ms, bitrate_list
