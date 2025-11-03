@@ -43,10 +43,15 @@ def compute_bitrate(quantized_blocks):
         flat = block.flatten()
         zigzag = flat[zigzag_order]
         
-        # Encontra índice do último coeficiente não-zero
-        nonzero_indices = np.nonzero(zigzag)[0]
-        if len(nonzero_indices) > 0:
-            last_nonzero_idx = nonzero_indices[-1]
+        # Encontra a posição do último coeficiente não-zero no vetor zigzag
+        # Percorre de trás para frente até achar o primeiro não-zero
+        last_nonzero_idx = -1
+        for idx in range(63, -1, -1):  # De 63 até 0
+            if zigzag[idx] != 0:
+                last_nonzero_idx = idx
+                break
+        
+        if last_nonzero_idx >= 0:
             # Calcula bits necessários: (posição + 1) / 64 * 8
             bits_for_block = (last_nonzero_idx + 1) / 64.0 * 8.0
         else:
