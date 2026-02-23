@@ -5,26 +5,36 @@ import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
 
-sys.path.insert(0, 'src')
+sys.path.insert(0, 'src_py')
 
 from dct import (dct_loeffler_1d, idct_loeffler_1d,
                  dct_matrix_1d, idct_matrix_1d,
                  dct_approximate_1d, idct_approximate_1d,
+                 dct_identity_1d, idct_identity_1d,
                  dct_2d, idct_2d)
-from pipeline import process_channel, rgb_to_ycbcr, ycbcr_to_rgb, calc_bitrate_amplitude
+from pipeline import process_channel, rgb_to_ycbcr, ycbcr_to_rgb
 from constantes import Q50_LUMA, Q50_CHROMA
 from plots import quality_metrics
 
-INPUT_DIR = 'src/imgs'
+INPUT_DIR = 'src_py/imgs'
 OUTPUT_DIR = 'comparison_results'
-K_FACTORS = [2.0, 4.0, 6.0, 8.0]
+K_FACTORS = [0.25, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0]
 #K_FACTORS = [1.0]
 
+# ============ NORMAL MODE: Compare all DCT methods ============
+# ============ NORMAL MODE: Compare all DCT methods ============
 METHODS = {
     'Loeffler': (dct_loeffler_1d, idct_loeffler_1d),
     'Matrix': (dct_matrix_1d, idct_matrix_1d),
     'Approximate': (dct_approximate_1d, idct_approximate_1d)
 }
+
+# ============ VALIDATION MODE: DCT IDENTITY + Q=ones ============
+# METHODS = {
+#     'Identity': (dct_identity_1d, idct_identity_1d),
+# }
+
+# }
 
 def process_image_with_method(img_path, method_name, dct_func, idct_func):
     """Process a single image with a specific DCT method"""
