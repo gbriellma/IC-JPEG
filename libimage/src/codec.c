@@ -26,6 +26,13 @@ jpeg_error_t jpeg_compress(const jpeg_image_t *image,
     uint32_t recip_luma[64], recip_chroma[64];
     scale_quant_table(Q50_LUMA, params->quality_factor, quant_luma);
     scale_quant_table(Q50_CHROMA, params->quality_factor, quant_chroma);
+    
+    /* Approximate DCT: absorb row-norm correction into Q tables */
+    if (params->dct_method == JPEG_DCT_APPROX) {
+        apply_approx_norm_correction(quant_luma);
+        apply_approx_norm_correction(quant_chroma);
+    }
+    
     compute_reciprocal_table(quant_luma, recip_luma);
     compute_reciprocal_table(quant_chroma, recip_chroma);
     
@@ -96,11 +103,13 @@ jpeg_error_t jpeg_compress(const jpeg_image_t *image,
     int32_t *y_q = comp->y_quantized, *cb_q = comp->cb_quantized, *cr_q = comp->cr_quantized;
     
     for (int b = 0; b < num_blks; b++) {
+        CODEC_YIELD_EVERY(b, 256);
         dct_func(y_in, y_dct);
         dct_func(cb_in, cb_dct);
         dct_func(cr_in, cr_dct);
         
-        if (params->skip_quantization) {
+        if (params->skip_quantization ||
+            params->dct_method == JPEG_DCT_IDENTITY) {
             memcpy(y_q, y_dct, 64 * sizeof(int32_t));
             memcpy(cb_q, cb_dct, 64 * sizeof(int32_t));
             memcpy(cr_q, cr_dct, 64 * sizeof(int32_t));
@@ -143,6 +152,12 @@ jpeg_error_t jpeg_decompress(const jpeg_compressed_t *compressed,
     scale_quant_table(Q50_LUMA, compressed->quality_factor, quant_luma);
     scale_quant_table(Q50_CHROMA, compressed->quality_factor, quant_chroma);
     
+    /* Approximate DCT: same norm correction as compress side */
+    if (compressed->dct_method == JPEG_DCT_APPROX) {
+        apply_approx_norm_correction(quant_luma);
+        apply_approx_norm_correction(quant_chroma);
+    }
+    
     /* Select IDCT function */
     void (*idct_func)(const int32_t*, int32_t*);
     if (compressed->dct_method == JPEG_DCT_MATRIX) idct_func = idct_matrix_2d;
@@ -173,6 +188,7 @@ jpeg_error_t jpeg_decompress(const jpeg_compressed_t *compressed,
         int32_t *y_out = y_blks, *cb_out = cb_blks, *cr_out = cr_blks;
         
         for (int b = 0; b < num_blks; b++) {
+            CODEC_YIELD_EVERY(b, 256);
             int32_t y_dct[64], cb_dct[64], cr_dct[64];
             dequantize(y_q, quant_luma, y_dct);
             dequantize(cb_q, quant_chroma, cb_dct);

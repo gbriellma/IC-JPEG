@@ -16,23 +16,28 @@
 /* Use PSRAM for large allocations on ESP32 */
 #ifdef ESP_PLATFORM
 #include "esp_heap_caps.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #define CODEC_CALLOC(n, sz) heap_caps_calloc((n), (sz), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
+/* Yield every N blocks to feed the task watchdog during long codec runs */
+#define CODEC_YIELD_EVERY(b, n) do { if (((b) & ((n)-1)) == 0) vTaskDelay(1); } while(0)
 #else
 #define CODEC_CALLOC(n, sz) calloc((n), (sz))
+#define CODEC_YIELD_EVERY(b, n) ((void)0)
 #endif
 
 /* ========== Fixed-point arithmetic constants ========== */
-#define SCALE_CONST 1000  /* Base scale for fixed-point math */
+#define SCALE_CONST 1048576  /* Base scale for fixed-point math (2^20) */
 
-/* Trigonometric constants for Loeffler DCT (scaled by 1000) */
-#define C1  980   /* cos(pi/16)  * 1000 = 0.9807... */
-#define S1  195   /* sin(pi/16)  * 1000 = 0.1951... */
-#define C3  831   /* cos(3*pi/16) * 1000 = 0.8315... */
-#define S3  556   /* sin(3*pi/16) * 1000 = 0.5556... */
-#define C6  383   /* cos(6*pi/16) * 1000 = 0.3827... */
-#define S6  924   /* sin(6*pi/16) * 1000 = 0.9239... */
-#define SQRT_2 1414  /* sqrt(2) * 1000 = 1.4142... */
-#define SQRT_8 2828  /* sqrt(8) * 1000 = 2.8284... */
+/* Trigonometric constants for Loeffler DCT (scaled by 2^20) */
+#define C1  1028428  /* cos(pi/16)   * 2^20 */
+#define S1   204567  /* sin(pi/16)   * 2^20 */
+#define C3   871859  /* cos(3*pi/16) * 2^20 */
+#define S3   582558  /* sin(3*pi/16) * 2^20 */
+#define C6   401273  /* cos(6*pi/16) * 2^20 */
+#define S6   968758  /* sin(6*pi/16) * 2^20 */
+#define SQRT_2 1482910  /* sqrt(2) * 2^20 */
+#define SQRT_8 2965821  /* sqrt(8) * 2^20 */
 
 /* ========== Quantization tables (JPEG standard Q=50) ========== */
 extern const int32_t Q50_LUMA[64];    /* Luminance quantization table */
@@ -77,6 +82,12 @@ void scale_quant_table(const int32_t base_table[64], float k,
 void compute_reciprocal_table(const int32_t quant_table[64], uint32_t recip_table[64]);
 void quantize_fast(const int32_t dct_block[64], const int32_t quant_table[64],
                    const uint32_t recip_table[64], int32_t output[64]);
+
+/* Apply norm correction for Cintra-Bayer approximate DCT.
+ * Scales the quantization table by ||T_row_i|| * ||T_row_j|| so that
+ * the multiplierless forward transform and Loeffler/Matrix see
+ * equivalent quantization levels. */
+void apply_approx_norm_correction(int32_t quant_table[64]);
 
 /* ========== Color Space Conversion (ITU-R BT.601) ========== */
 /* Single pixel conversion (legacy, for compatibility) */

@@ -97,3 +97,39 @@ void scale_quant_table(const int32_t base_table[64], float k,
         output[i] = (scaled < 1) ? 1 : scaled;
     }
 }
+
+/* ========================================================================== *
+ *  Approximate DCT norm correction (Cintra-Bayer 2011)
+ *
+ *  The transform matrix T has rows with squared norms:
+ *    ||row_k||^2 = { 8, 6, 4, 6, 8, 6, 4, 6 }   for k = 0..7
+ *
+ *  The forward transform Y = T*x produces coefficients LARGER than the
+ *  standard orthonormal DCT by a factor of ||row_k|| per dimension.
+ *  For 2D, coefficient (i,j) is scaled by ||row_i|| * ||row_j||.
+ *
+ *  To ensure fair comparison with Loeffler/Matrix (which produce
+ *  orthonormal-scale output), the quantization table is multiplied by
+ *  these norm factors:
+ *    Q_approx[i*8+j] = Q_std[i*8+j] * ||row_i|| * ||row_j||
+ *
+ *  This absorbs the normalization into the quantization step, keeping
+ *  the forward transform truly multiplierless (additions only).
+ * ========================================================================== */
+
+/* Row norms * 1024:  sqrt(8)=2896, sqrt(6)=2508, sqrt(4)=2048 */
+static const int32_t APPROX_NORM_1024[8] = {
+    2896, 2508, 2048, 2508, 2896, 2508, 2048, 2508
+};
+
+void apply_approx_norm_correction(int32_t quant_table[64]) {
+    for (int i = 0; i < 8; i++) {
+        for (int j = 0; j < 8; j++) {
+            int64_t n = (int64_t)APPROX_NORM_1024[i] * APPROX_NORM_1024[j];
+            /* Q * norm_i * norm_j / (1024 * 1024)  with rounding */
+            int32_t scaled = (int32_t)(((int64_t)quant_table[i*8+j] * n
+                                        + 524288) / 1048576);
+            quant_table[i*8+j] = (scaled < 1) ? 1 : scaled;
+        }
+    }
+}

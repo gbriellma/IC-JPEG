@@ -1,4 +1,9 @@
-/* dct_loeffler.c - Fast DCT with 11 multiplications (Loeffler 1989) */
+/* dct_loeffler.c - Fast DCT with 11 multiplications (Loeffler 1989)
+ *
+ * Fixed IDCT: eliminated cascading truncation errors from intermediate
+ * integer divisions. All values are kept at full scale (SC = 2^20) and
+ * divided only once at the final output with proper rounding.
+ */
 
 #include "../include/internal.h"
 
@@ -13,11 +18,11 @@
 #define LF_SCALE SCALE_CONST
 
 /* Signed integer division with rounding to nearest */
-static inline int32_t div_round(int64_t num, int64_t den) {
+static inline int64_t div_round(int64_t num, int64_t den) {
     if (num >= 0)
-        return (int32_t)((num + den / 2) / den);
+        return (num + den / 2) / den;
     else
-        return (int32_t)((num - den / 2) / den);
+        return (num - den / 2) / den;
 }
 
 /* Forward 1D DCT with stride - read from src[i*stride], write contiguous */
@@ -40,34 +45,60 @@ static void dct_1d_stride(const int32_t *src, int stride, int32_t *dst) {
     dst[5] = div_round(LF_C1*o0 - LF_S3*o1 - LF_C3*o2 - LF_S1*o3, (int64_t)LF_SQRT2 * 2);
     dst[7] = div_round(-LF_S3*o0 + LF_S1*o1 - LF_C1*o2 + LF_C3*o3, (int64_t)LF_SQRT2 * 2);
 }
-/* Inverse 1D DCT with stride - read contiguous, write to dst[i*stride] */
+
+/* Inverse 1D DCT with stride - deferred division strategy
+ *
+ * Even path: all intermediates kept at scale SC without division.
+ *   t0_s  = Z * SQRT2           (scale SC, represents t0*SC)
+ *   e0_2s = t0_s + t4_s         (scale SC, represents 2*e0*SC)
+ *   e2_2s = 2*(C6*Z2 - S6*Z6)  (scale SC, represents 2*e2*SC)
+ *   s07_4s = e0_2s + e3_2s      (scale SC, represents 4*s07*SC)
+ *
+ * Odd path: one intermediate div_round to normalize from SC^2 to 4*SC.
+ *   n0     = C3*Z1+S1*Z3+...    (scale SC, the rotation numerator)
+ *   d07_4s = div_round(2*SC*(n0+n3), SQRT2)  (scale SC, represents 4*d07*SC)
+ *
+ * Final output: div_round(s_4s +/- d_4s, 8*SC)
+ */
 static void idct_1d_stride(const int32_t *src, int32_t *dst, int stride) {
-    int64_t Z0 = src[0]*2, Z1 = src[1]*2, Z2 = src[2]*2, Z3 = src[3]*2;
-    int64_t Z4 = src[4]*2, Z5 = src[5]*2, Z6 = src[6]*2, Z7 = src[7]*2;
-    
-    /* Even part - DC/AC through cos rotation */
-    int64_t t0 = Z0 * LF_SQRT2 / LF_SCALE, t4 = Z4 * LF_SQRT2 / LF_SCALE;
-    int64_t e0 = (t0 + t4) / 2, e1 = (t0 - t4) / 2;
-    int64_t e2 = (LF_C6*Z2 - LF_S6*Z6) / LF_SCALE;
-    int64_t e3 = (LF_S6*Z2 + LF_C6*Z6) / LF_SCALE;
-    int64_t s07 = (e0+e3)/2, s34 = (e0-e3)/2, s16 = (e1+e2)/2, s25 = (e1-e2)/2;
-    
-    /* Odd part - transposed rotation matrix from forward */
-    int64_t o0 = (LF_C3*Z1 + LF_S1*Z3 + LF_C1*Z5 - LF_S3*Z7) / LF_SQRT2;
-    int64_t o1 = (LF_C1*Z1 - LF_C3*Z3 - LF_S3*Z5 + LF_S1*Z7) / LF_SQRT2;
-    int64_t o2 = (LF_S1*Z1 + LF_S3*Z3 - LF_C3*Z5 - LF_C1*Z7) / LF_SQRT2;
-    int64_t o3 = (LF_S3*Z1 + LF_C1*Z3 - LF_S1*Z5 + LF_C3*Z7) / LF_SQRT2;
-    int64_t d07 = (o0+o3)/2, d34 = (o0-o3)/2, d16 = (o1+o2)/2, d25 = (o1-o2)/2;
-    
-    /* Final butterfly with rounding */
-    dst[0]        = (int32_t)div_round(s07+d07, 2);
-    dst[7*stride] = (int32_t)div_round(s07-d07, 2);
-    dst[stride]   = (int32_t)div_round(s16+d16, 2);
-    dst[6*stride] = (int32_t)div_round(s16-d16, 2);
-    dst[2*stride] = (int32_t)div_round(s25+d25, 2);
-    dst[5*stride] = (int32_t)div_round(s25-d25, 2);
-    dst[3*stride] = (int32_t)div_round(s34+d34, 2);
-    dst[4*stride] = (int32_t)div_round(s34-d34, 2);
+    int64_t Z0 = (int64_t)src[0] * 2, Z1 = (int64_t)src[1] * 2;
+    int64_t Z2 = (int64_t)src[2] * 2, Z3 = (int64_t)src[3] * 2;
+    int64_t Z4 = (int64_t)src[4] * 2, Z5 = (int64_t)src[5] * 2;
+    int64_t Z6 = (int64_t)src[6] * 2, Z7 = (int64_t)src[7] * 2;
+
+    /* Even part - zero intermediate divisions */
+    int64_t t0_s = Z0 * LF_SQRT2;                    /* t0 * SC */
+    int64_t t4_s = Z4 * LF_SQRT2;                    /* t4 * SC */
+    int64_t e0_2s = t0_s + t4_s;                      /* 2*e0 * SC */
+    int64_t e1_2s = t0_s - t4_s;                      /* 2*e1 * SC */
+    int64_t e2_2s = 2 * (LF_C6 * Z2 - LF_S6 * Z6);  /* 2*e2 * SC */
+    int64_t e3_2s = 2 * (LF_S6 * Z2 + LF_C6 * Z6);  /* 2*e3 * SC */
+    int64_t s07_4s = e0_2s + e3_2s;                   /* 4*s07 * SC */
+    int64_t s34_4s = e0_2s - e3_2s;                   /* 4*s34 * SC */
+    int64_t s16_4s = e1_2s + e2_2s;                   /* 4*s16 * SC */
+    int64_t s25_4s = e1_2s - e2_2s;                   /* 4*s25 * SC */
+
+    /* Odd part - one rounding division to match even part scale */
+    int64_t n0 = LF_C3*Z1 + LF_S1*Z3 + LF_C1*Z5 - LF_S3*Z7;  /* scale SC */
+    int64_t n1 = LF_C1*Z1 - LF_C3*Z3 - LF_S3*Z5 + LF_S1*Z7;
+    int64_t n2 = LF_S1*Z1 + LF_S3*Z3 - LF_C3*Z5 - LF_C1*Z7;
+    int64_t n3 = LF_S3*Z1 + LF_C1*Z3 - LF_S1*Z5 + LF_C3*Z7;
+
+    int64_t d07_4s = div_round(2 * (int64_t)LF_SCALE * (n0 + n3), LF_SQRT2);
+    int64_t d34_4s = div_round(2 * (int64_t)LF_SCALE * (n0 - n3), LF_SQRT2);
+    int64_t d16_4s = div_round(2 * (int64_t)LF_SCALE * (n1 + n2), LF_SQRT2);
+    int64_t d25_4s = div_round(2 * (int64_t)LF_SCALE * (n1 - n2), LF_SQRT2);
+
+    /* Final butterfly - single rounding division per output */
+    int64_t final_div = 8LL * LF_SCALE;
+    dst[0]        = (int32_t)div_round(s07_4s + d07_4s, final_div);
+    dst[7*stride] = (int32_t)div_round(s07_4s - d07_4s, final_div);
+    dst[stride]   = (int32_t)div_round(s16_4s + d16_4s, final_div);
+    dst[6*stride] = (int32_t)div_round(s16_4s - d16_4s, final_div);
+    dst[2*stride] = (int32_t)div_round(s25_4s + d25_4s, final_div);
+    dst[5*stride] = (int32_t)div_round(s25_4s - d25_4s, final_div);
+    dst[3*stride] = (int32_t)div_round(s34_4s + d34_4s, final_div);
+    dst[4*stride] = (int32_t)div_round(s34_4s - d34_4s, final_div);
 }
 
 /* Forward 1D DCT - contiguous input/output (wrapper) */
