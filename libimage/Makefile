@@ -1,21 +1,17 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -O2 -Iinclude
+CFLAGS = -Wall -Wextra -O2 -Iinclude -std=c11
 
 SRC_DIR = src
 BIN_DIR = bin
 BUILD_DIR = build
-PIC_DIR = $(BUILD_DIR)/pic
+PIC_DIR   = $(BUILD_DIR)/pic
 
-LIB_NAME = libimage.a
-LIBRARY = $(BIN_DIR)/$(LIB_NAME)
-
+LIB_NAME    = libimage.a
 SHARED_NAME = libimage.so
-SHARED_LIB = $(BIN_DIR)/$(SHARED_NAME)
+LIBRARY     = $(BIN_DIR)/$(LIB_NAME)
+SHARED_LIB  = $(BIN_DIR)/$(SHARED_NAME)
 
-SRCS = $(wildcard $(SRC_DIR)/*.c)
-OBJS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(SRCS))
-
-# Library sources (exclude test_validation.c which has main())
+SRCS     = $(wildcard $(SRC_DIR)/*.c)
 LIB_SRCS = $(filter-out $(SRC_DIR)/test_validation.c, $(SRCS))
 LIB_OBJS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(LIB_SRCS))
 PIC_OBJS = $(patsubst $(SRC_DIR)/%.c,$(PIC_DIR)/%.o,$(LIB_SRCS))
@@ -23,6 +19,7 @@ PIC_OBJS = $(patsubst $(SRC_DIR)/%.c,$(PIC_DIR)/%.o,$(LIB_SRCS))
 TEST_SRC = $(SRC_DIR)/test_validation.c
 TEST_BIN = $(BIN_DIR)/test_validation
 
+# -- Build rules --------------------------------------------------------
 all: $(LIBRARY) $(SHARED_LIB)
 
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
@@ -35,21 +32,21 @@ $(PIC_DIR)/%.o: $(SRC_DIR)/%.c
 
 $(LIBRARY): $(LIB_OBJS)
 	@mkdir -p $(BIN_DIR)
-	ar rcs $(LIBRARY) $(LIB_OBJS)
-	@echo "📦 Biblioteca estática: $(LIBRARY)"
+	ar rcs $@ $(LIB_OBJS)
+	@echo "  Static library: $@"
 
 $(SHARED_LIB): $(PIC_OBJS)
 	@mkdir -p $(BIN_DIR)
 	$(CC) -shared -o $@ $(PIC_OBJS) -lm
-	@echo "🔗 Biblioteca compartilhada: $(SHARED_LIB)"
+	@echo "  Shared library: $@"
 
 shared: $(SHARED_LIB)
 
 test: $(TEST_BIN)
 
 $(TEST_BIN): $(TEST_SRC) $(LIBRARY)
-	$(CC) $(CFLAGS) $< -L$(BIN_DIR) -limage -lm -o $@
-	@echo "🧪 Teste compilado: $(TEST_BIN)"
+	$(CC) $(CFLAGS) $< $(LIBRARY) -lm -o $@
+	@echo "  Test compiled: $@"
 
 clean:
 	rm -rf $(BUILD_DIR) $(TEST_BIN) $(LIBRARY) $(SHARED_LIB)

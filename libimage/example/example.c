@@ -76,8 +76,8 @@ void example_basic_compression(void) {
     jpeg_params_t params;
     params.quality_factor = 2.0;
     params.dct_method = JPEG_DCT_LOEFFLER;
-    params.use_standard_tables = 1;
-    params.skip_quantization = 0;
+    params.subsampling = JPEG_SUBSAMP_444;
+    params.flags = 0;
     
     /* Compress */
     jpeg_compressed_t *compressed = NULL;
@@ -132,8 +132,8 @@ void example_quality_comparison(void) {
         jpeg_params_t params;
         params.quality_factor = k_values[i];
         params.dct_method = JPEG_DCT_LOEFFLER;
-        params.use_standard_tables = 1;
-        params.skip_quantization = 0;
+        params.subsampling = JPEG_SUBSAMP_444;
+        params.flags = 0;
         
         jpeg_compressed_t *compressed = NULL;
         jpeg_compress(original, &params, &compressed);
@@ -167,22 +167,30 @@ void example_method_comparison(void) {
     jpeg_image_t *original = create_gradient_image(64, 64);
     if (!original) return;
     
-    const char *method_names[] = {"Loeffler", "Matrix", "Approximate"};
+    const char *method_names[] = {
+        "Loeffler",
+        "Matrix",
+        "RDCT",
+        "Silveira j=3",
+        "Silveira j=7",
+    };
     jpeg_dct_method_t methods[] = {
         JPEG_DCT_LOEFFLER,
         JPEG_DCT_MATRIX,
-        JPEG_DCT_APPROX
+        JPEG_DCT_RDCT,
+        JPEG_DCT_SILVEIRA_J3,
+        JPEG_DCT_SILVEIRA_J7,
     };
     
     printf("%-12s | %12s | %15s\n", "Method", "PSNR (dB)", "Multiplications");
     printf("-------------|--------------|----------------\n");
     
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 5; i++) {
         jpeg_params_t params;
         params.quality_factor = 2.0;
         params.dct_method = methods[i];
-        params.use_standard_tables = 1;
-        params.skip_quantization = 0;
+        params.subsampling = JPEG_SUBSAMP_444;
+        params.flags = 0;
         
         jpeg_compressed_t *compressed = NULL;
         jpeg_compress(original, &params, &compressed);
@@ -195,6 +203,7 @@ void example_method_comparison(void) {
         const char *mults;
         if (methods[i] == JPEG_DCT_LOEFFLER) mults = "11";
         else if (methods[i] == JPEG_DCT_MATRIX) mults = "64";
+        else if (methods[i] == JPEG_DCT_SILVEIRA_J7) mults = "0 + shifts";
         else mults = "0";
         
         printf("%-12s | %12.2f | %15s\n", method_names[i], psnr, mults);
@@ -228,6 +237,8 @@ void example_error_handling(void) {
     jpeg_params_t params;
     params.quality_factor = 2.0;
     params.dct_method = JPEG_DCT_LOEFFLER;
+    params.subsampling = JPEG_SUBSAMP_444;
+    params.flags = 0;
     
     err = jpeg_compress(&invalid_img, &params, &comp);
     printf("Test 2 - Invalid dimensions: %s ", jpeg_error_string(err));

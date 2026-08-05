@@ -1,0 +1,2 @@
+# Vendored upstream source keeps its original formatting.
+prototype/components/esp32-camera/** -whitespace

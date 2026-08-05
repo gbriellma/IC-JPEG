@@ -1,99 +1,116 @@
-/* dct_approx.c - Multiplierless DCT approximation (Cintra-Bayer 2011) */
+/* dct_approx.c -- RDCT / Cintra-Bayer 2011 approximate DCT (pure int32)
+ *
+ * The forward transform uses additions only -- independent of SCALE.
+ * The inverse transform uses small integer norm factors expressed as
+ * additions, preserving the multiplier-free arithmetic profile of the
+ * approximation kernels.
+ *
+ * apply_approx_norm_correction() uses two-step division to stay in int32:
+ *   Instead of q * (n_i * n_j) / 1048576, we compute:
+ *     step1 = q * n_i / 1024  (with rounding)
+ *     step2 = step1 * n_j / 1024  (with rounding)
+ *   Max intermediate: 968 * 2896 = 2,803,328 -> fits int32.
+ */
 
+#include <stdint.h>
 #include "../include/internal.h"
 
-/* Forward 1D Approximate DCT with stride - uses only additions */
-static void dct_1d_stride(const int32_t *src, int s, int32_t *dst) {
-    int32_t x0 = src[0], x1 = src[s], x2 = src[2*s], x3 = src[3*s];
-    int32_t x4 = src[4*s], x5 = src[5*s], x6 = src[6*s], x7 = src[7*s];
-    dst[0] = x0 + x1 + x2 + x3 + x4 + x5 + x6 + x7;
-    dst[1] = x0 + x1 + x2 - x5 - x6 - x7;
-    dst[2] = x0 - x3 - x4 + x7;
-    dst[3] = x0 - x2 - x3 + x4 + x5 - x7;
-    dst[4] = x0 - x1 - x2 + x3 + x4 - x5 - x6 + x7;
-    dst[5] = x0 - x1 + x3 - x4 + x6 - x7;
-    dst[6] = -x1 + x2 + x5 - x6;
-    dst[7] = -x1 + x2 - x3 + x4 - x5 + x6;
+static inline int32_t x2_i32(int32_t x) { return x + x; }
+static inline int32_t x3_i32(int32_t x) { return x + x + x; }
+static inline int32_t x4_i32(int32_t x)
+{
+    int32_t x2 = x2_i32(x);
+    return x2 + x2;
+}
+static inline int32_t x6_i32(int32_t x) { return x3_i32(x2_i32(x)); }
+
+/* -- Forward 1D (additions only) --------------------------------------- */
+static void dct_1d_stride(const int32_t *src, int s, int32_t *dst)
+{
+    const int32_t *p = src;
+    int32_t x0 = *p; p += s;
+    int32_t x1 = *p; p += s;
+    int32_t x2 = *p; p += s;
+    int32_t x3 = *p; p += s;
+    int32_t x4 = *p; p += s;
+    int32_t x5 = *p; p += s;
+    int32_t x6 = *p; p += s;
+    int32_t x7 = *p;
+
+    dst[0] =  x0+x1+x2+x3+x4+x5+x6+x7;
+    dst[1] =  x0+x1+x2      -x5-x6-x7;
+    dst[2] =  x0      -x3-x4      +x7;
+    dst[3] =  x0   -x2-x3+x4+x5   -x7;
+    dst[4] =  x0-x1-x2+x3+x4-x5-x6+x7;
+    dst[5] =  x0-x1   +x3-x4   +x6-x7;
+    dst[6] =    -x1+x2      +x5-x6;
+    dst[7] =    -x1+x2-x3+x4-x5+x6;
 }
 
-/* Inverse 1D Approximate DCT with stride
- * 
- * The forward matrix T has rows with different squared norms:
- *   ||row_k||^2 = {8, 6, 4, 6, 8, 6, 4, 6} for k = 0..7
- * 
- * The exact inverse is: T_inv = T^T @ diag(1/||row_k||^2)
- * Using common denominator 24 (LCM of 8,6,4):
- *   x[n] = (sum of T^T[n][k] * (24/norm_k^2) * y[k]) / 24
- * 
- * Scaling factors per coefficient: 24/8=3, 24/6=4, 24/4=6, 24/6=4, 24/8=3, 24/6=4, 24/4=6, 24/6=4
- */
-static void idct_1d_stride(const int32_t *src, int32_t *dst, int s) {
-    /* Pre-scale each coefficient by its norm factor to avoid per-output division */
-    int32_t a0 = src[0] * 3;   /* norm^2 = 8, scale = 24/8 = 3 */
-    int32_t a1 = src[1] * 4;   /* norm^2 = 6, scale = 24/6 = 4 */
-    int32_t a2 = src[2] * 6;   /* norm^2 = 4, scale = 24/4 = 6 */
-    int32_t a3 = src[3] * 4;   /* norm^2 = 6, scale = 24/6 = 4 */
-    int32_t a4 = src[4] * 3;   /* norm^2 = 8, scale = 24/8 = 3 */
-    int32_t a5 = src[5] * 4;   /* norm^2 = 6, scale = 24/6 = 4 */
-    int32_t a6 = src[6] * 6;   /* norm^2 = 4, scale = 24/4 = 6 */
-    int32_t a7 = src[7] * 4;   /* norm^2 = 6, scale = 24/6 = 4 */
-    
-    /* T^T[n][k] * scaled_coeff, divided by 24
-     * Rounding: add 12 (= 24/2) before dividing for proper rounding */
-    dst[0]   = (a0 + a1 + a2 + a3 + a4 + a5 + 12) / 24;
-    dst[s]   = (a0 + a1 - a4 - a5 - a6 - a7 + 12) / 24;
-    dst[2*s] = (a0 + a1 - a3 - a4 + a6 + a7 + 12) / 24;
-    dst[3*s] = (a0 - a2 - a3 + a4 + a5 - a7 + 12) / 24;
-    dst[4*s] = (a0 - a2 + a3 + a4 - a5 + a7 + 12) / 24;
-    dst[5*s] = (a0 - a1 + a3 - a4 + a6 - a7 + 12) / 24;
-    dst[6*s] = (a0 - a1 - a4 + a5 - a6 + a7 + 12) / 24;
-    dst[7*s] = (a0 - a1 + a2 - a3 + a4 - a5 + 12) / 24;
+/* -- Inverse 1D -------------------------------------------------------- */
+static void idct_1d_stride(const int32_t *src, int32_t *dst, int s)
+{
+    int32_t a0 = x3_i32(src[0]);
+    int32_t a1 = x4_i32(src[1]);
+    int32_t a2 = x6_i32(src[2]);
+    int32_t a3 = x4_i32(src[3]);
+    int32_t a4 = x3_i32(src[4]);
+    int32_t a5 = x4_i32(src[5]);
+    int32_t a6 = x6_i32(src[6]);
+    int32_t a7 = x4_i32(src[7]);
+
+    int32_t *p = dst;
+    *p = codec_div_round_symm(a0+a1+a2+a3+a4+a5, 24); p += s;
+    *p = codec_div_round_symm(a0+a1-a4-a5-a6-a7, 24); p += s;
+    *p = codec_div_round_symm(a0+a1-a3-a4+a6+a7, 24); p += s;
+    *p = codec_div_round_symm(a0-a2-a3+a4+a5-a7, 24); p += s;
+    *p = codec_div_round_symm(a0-a2+a3+a4-a5+a7, 24); p += s;
+    *p = codec_div_round_symm(a0-a1+a3-a4+a6-a7, 24); p += s;
+    *p = codec_div_round_symm(a0-a1-a4+a5-a6+a7, 24); p += s;
+    *p = codec_div_round_symm(a0-a1+a2-a3+a4-a5, 24);
 }
 
-/* Forward 1D - contiguous (wrapper) */
-void dct_approx_1d(const int32_t *in, int32_t *out) {
-    dct_1d_stride(in, 1, out);
-}
+/* apply_approx_norm_correction() is defined in quantization.c */
 
-/* Inverse 1D - contiguous (wrapper) */
-void idct_approx_1d(const int32_t *in, int32_t *out) {
-    idct_1d_stride(in, out, 1);
-}
+/* -- Public API --------------------------------------------------------- */
 
-/* Forward 2D DCT - row-column with stride */
-void dct_approx_2d(const int32_t *in, int32_t *out) {
+void dct_rdct_2d(const int32_t *in, int32_t *out)
+{
     int32_t temp[64];
-    
-    /* Transform rows: stride=1 */
-    for (int y = 0; y < 8; y++)
-        dct_1d_stride(in + y*8, 1, temp + y*8);
-    
-    /* Transform columns: stride=8 */
-    for (int x = 0; x < 8; x++)
-        dct_1d_stride(temp + x, 8, out + x*8);
-    
-    /* Transpose result */
+
+    const int32_t *row_in = in;
+    int32_t *row_tmp = temp;
+    for (int y = 0; y < 8; y++, row_in += 8, row_tmp += 8)
+        dct_1d_stride(row_in, 1, row_tmp);
+
+    int32_t *out_row = out;
+    for (int x = 0; x < 8; x++, out_row += 8)
+        dct_1d_stride(temp + x, 8, out_row);
+
     for (int y = 0; y < 8; y++) {
-        for (int x = y + 1; x < 8; x++) {
-            int32_t t = out[y*8 + x];
-            out[y*8 + x] = out[x*8 + y];
-            out[x*8 + y] = t;
+        int32_t *row = out + (y << 3);
+        for (int x = y+1; x < 8; x++) {
+            int32_t *a = row + x;
+            int32_t *b = out + (x << 3) + y;
+            int32_t t = *a;
+            *a = *b;
+            *b = t;
         }
     }
 }
 
-/* Inverse 2D DCT - column-row with stride */
-void idct_approx_2d(const int32_t *in, int32_t *out) {
-    int32_t temp[64];
-    int32_t col[8];
-    
-    /* Transform columns first */
+void idct_rdct_2d(const int32_t *in, int32_t *out)
+{
+    int32_t temp[64], col[8];
+
     for (int x = 0; x < 8; x++) {
-        for (int y = 0; y < 8; y++) col[y] = in[y*8 + x];
+        const int32_t *p = in + x;
+        for (int y = 0; y < 8; y++, p += 8) col[y] = *p;
         idct_1d_stride(col, temp + x, 8);
     }
-    
-    /* Transform rows */
-    for (int y = 0; y < 8; y++)
-        idct_1d_stride(temp + y*8, out + y*8, 1);
+
+    int32_t *row_out = out;
+    const int32_t *row_tmp = temp;
+    for (int y = 0; y < 8; y++, row_tmp += 8, row_out += 8)
+        idct_1d_stride(row_tmp, row_out, 1);
 }

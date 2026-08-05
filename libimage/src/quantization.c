@@ -57,9 +57,9 @@ void quantize_fast(const int32_t dct_block[64], const int32_t quant_table[64],
         
         /* Add half for rounding, then multiply by reciprocal and shift */
         if (dct >= 0) {
-            output[i] = (int32_t)(((int64_t)(dct + (qt >> 1)) * recip) >> RECIP_SHIFT);
+            output[i] = (int32_t)(((uint32_t)(dct + (qt >> 1)) * recip) >> RECIP_SHIFT);
         } else {
-            output[i] = -(int32_t)(((int64_t)((-dct) + (qt >> 1)) * recip) >> RECIP_SHIFT);
+            output[i] = -(int32_t)(((uint32_t)((-dct) + (qt >> 1)) * recip) >> RECIP_SHIFT);
         }
     }
 }
@@ -89,9 +89,11 @@ void dequantize(const int32_t quant_block[64], const int32_t quant_table[64],
 /* Scale quantization table with integer factor (no float) */
 void scale_quant_table(const int32_t base_table[64], float k,
                        int32_t output[64]) {
-    /* Convert float to fixed-point scale (10 bits precision) */
-    int32_t k_fixed = (int32_t)(k * 1024);
-    
+    /* roundf avoids systematic truncation bias (e.g. k=0.2: 204.8→205 not 204).
+     * For all experimental k values the scaled table entries are identical to
+     * the truncated version, so no metric changes. */
+    int32_t k_fixed = (int32_t)roundf(k * 1024.0f);
+
     for (int i = 0; i < 64; i++) {
         int32_t scaled = (base_table[i] * k_fixed) >> 10;
         output[i] = (scaled < 1) ? 1 : scaled;
@@ -125,11 +127,47 @@ static const int32_t APPROX_NORM_1024[8] = {
 void apply_approx_norm_correction(int32_t quant_table[64]) {
     for (int i = 0; i < 8; i++) {
         for (int j = 0; j < 8; j++) {
-            int64_t n = (int64_t)APPROX_NORM_1024[i] * APPROX_NORM_1024[j];
-            /* Q * norm_i * norm_j / (1024 * 1024)  with rounding */
-            int32_t scaled = (int32_t)(((int64_t)quant_table[i*8+j] * n
-                                        + 524288) / 1048576);
+            int32_t q = quant_table[i*8+j];
+            /* Two-step division keeps all intermediates in int32:
+             *   max q at k=8: 121*8 = 968
+             *   step1 = 968 * 2896 = 2,803,328 -> fits int32
+             *   step2 = 2738 * 2896 = 7,929,248 -> fits int32 */
+            int32_t step1 = (q * APPROX_NORM_1024[i] + 512) / 1024;
+            int32_t scaled = (step1 * APPROX_NORM_1024[j] + 512) / 1024;
             quant_table[i*8+j] = (scaled < 1) ? 1 : scaled;
+        }
+    }
+}
+
+/* Row norms * 1024 for the implemented Silveira et al. 2022 class
+ * kernels. Index 0 is unused so the table can be addressed directly by
+ * j = 1..7.
+ *
+ * The j=7 forward kernel computes 2*T(a) to avoid truncating the 1/2
+ * coefficients. Its effective row norms are therefore doubled here, which
+ * is equivalent to multiplying the 2-D quantization correction by 4. */
+static const int32_t CLASS_NORM_1024[8][8] = {
+    {0, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 0},
+    {2896, 2048, 2048, 2048, 2896, 2048, 2048, 2048},
+    {0, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 0},
+    {5792, 4344, 4096, 4344, 5792, 4344, 4096, 4344},
+};
+
+void apply_class_norm_correction(int32_t *quant_table, int j)
+{
+    if (!quant_table || (j != 3 && j != 7)) return;
+
+    const int32_t *N = CLASS_NORM_1024[j];
+    for (int i = 0; i < 8; i++) {
+        for (int k = 0; k < 8; k++) {
+            int32_t q = quant_table[i*8 + k];
+            int32_t step1 = (q * N[i] + 512) / 1024;
+            int32_t scaled = (step1 * N[k] + 512) / 1024;
+            quant_table[i*8 + k] = (scaled < 1) ? 1 : scaled;
         }
     }
 }

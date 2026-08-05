@@ -1,0 +1,57 @@
+# ── sdkconfig overlay para ESP32-S3 ──────────────────────────────────────────
+# Aplicado sobre sdkconfig.defaults no ambiente [env:s3].
+# Desabilita câmera (não existe no S3) e habilita led_strip via RMT.
+
+# ── Desabilita suporte a câmera (não existe no S3) ────────────────────────────
+CONFIG_OV2640_SUPPORT=n
+CONFIG_SCCB_HARDWARE_I2C_PORT1=n
+
+# ── LED strip (WS2812B em IO8) via RMT ────────────────────────────────────────
+CONFIG_RMT_ENABLE_DEBUG_LOG=n
+
+# ── PSRAM octet-word mode (ESP32-S3 usa Octal PSRAM) ─────────────────────────
+CONFIG_SPIRAM_MODE_QUAD=n
+CONFIG_SPIRAM_MODE_OCT=y
+
+# ── PSRAM speed: 40MHz (tuning automático falhou a 80MHz neste módulo) ────────
+# ATENÇÃO: sdkconfig_extras é aplicado apenas na primeira geração do sdkconfig.
+# As correções definitivas vivem em sdkconfig.s3 (arquivo canônico persistido).
+# Este bloco está aqui para documentação - as mudanças reais foram feitas em sdkconfig.s3.
+CONFIG_SPIRAM_SPEED_80M=n
+CONFIG_SPIRAM_SPEED_40M=y
+
+# ── Desabilita memory test (SPIRAM_MEMTEST) ───────────────────────────────────
+# O test chama abort() se falhar. Com 40MHz o PSRAM deve passar, mas como
+# precaução o test está desabilitado. Habilitá-lo novamente confirma se
+# o 40MHz resolveu (boot sem abort = 40MHz funcionou).
+CONFIG_SPIRAM_MEMTEST=n
+
+# ── Flash 8 MB (ESP32-S3-DevKitC-1) ─────────────────────────────────────────
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="8MB"
+
+# ── Watchdog: desabilita monitoramento das IDLE tasks ────────────────────────
+# sd_init() bloqueia esp_vfs_fat_sdmmc_mount() → IDLE starva → TG1WDT dispara.
+# Como main_task não está subscrito ao TWDT, desabilitar idle-check elimina o
+# WDT sem perder proteção contra loops infinitos na app.
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=30
+# CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0 is not set
+# CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1 is not set
+
+# ── Stack overflow detection (canary) - captura overflow com panic dump ──────
+CONFIG_FREERTOS_CHECK_STACKOVERFLOW_CANARY=y
+
+# ── Console: USB-Serial-JTAG APENAS (libera IO43/IO44 para UART1 da CAM) ────
+# UART0 no modo DEFAULT usa IO43(TX)/IO44(RX) - mesmos pinos do UART1 (câmera).
+# Quando a CAM envia HB bytes em IO44, UART0 também recebe → ISR da console
+# dispara para dados inesperados → corrompe estado do FreeRTOS → vTaskDelay trava.
+# Solução: console vai SOMENTE pelo USB-Serial-JTAG (já funciona via USB).
+# CONFIG_ESP_CONSOLE_UART_DEFAULT is not set
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+# ── FATFS: habilita nomes longos para run0001_loeffler.bmp etc. ─────────────
+# Sem LFN, o FATFS fica limitado a nomes 8.3 e fopen() falha nos artefatos.
+# CONFIG_FATFS_LFN_NONE is not set
+CONFIG_FATFS_LFN_HEAP=y
+# CONFIG_FATFS_LFN_STACK is not set
+CONFIG_FATFS_MAX_LFN=255

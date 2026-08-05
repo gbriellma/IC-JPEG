@@ -311,8 +311,8 @@ void process_image(const char *path, const char *outdir, float k,
     jpeg_params_t params;
     params.quality_factor = k;
     params.dct_method = method;
-    params.use_standard_tables = 1;
-    params.skip_quantization = (method == JPEG_DCT_IDENTITY) ? 1 : 0;
+    params.subsampling = JPEG_SUBSAMP_444;
+    params.flags = (method == JPEG_DCT_IDENTITY) ? JPEG_FLAG_SKIP_QUANTIZATION : 0;
     
     jpeg_compressed_t *comp = NULL;
     jpeg_error_t err = jpeg_compress(orig, &params, &comp);
@@ -374,7 +374,9 @@ void process_image(const char *path, const char *outdir, float k,
 void process_batch(const char *images[], int n, float k, 
                    jpeg_dct_method_t method, const char *name) {
     char outdir[256];
-    const char *method_str[] = {"loeffler", "matrix", "approx", "identity"};
+    const char *method_str[] = {
+        "loeffler", "matrix", "rdct", "silveira_j3", "silveira_j7", "identity"
+    };
     snprintf(outdir, sizeof(outdir), "example/output_%s_k%.0f", method_str[method], k);
     
     printf("\n╔═══════════════════════════════════════════════════════════╗\n");
@@ -438,21 +440,23 @@ int main(int argc, char **argv) {
     printf("Quality: %.1f (1.0=high, 8.0=low)\n\n", k);
     
     const char *images[] = {
-        "example/imgs/fruits.bmp",
-        "example/imgs/monarch.bmp",
-        "example/imgs/pens.bmp",
-        "example/imgs/yacht.bmp",
-        "example/imgs/estatua-da-liberdade.bmp",
-        "example/imgs/marco-zero.bmp",
-        "example/imgs/muralha-da-china.bmp",
-        "example/imgs/torre-de-pisa.bmp"
+        "../experiments/imgs/fruits.bmp",
+        "../experiments/imgs/monarch.bmp",
+        "../experiments/imgs/pens.bmp",
+        "../experiments/imgs/yacht.bmp",
+        "../experiments/imgs/estatua-da-liberdade.bmp",
+        "../experiments/imgs/marco-zero.bmp",
+        "../experiments/imgs/muralha-da-china.bmp",
+        "../experiments/imgs/torre-de-pisa.bmp"
     };
     int n = sizeof(images) / sizeof(images[0]);
     
     /* Process with all methods */
     process_batch(images, n, k, JPEG_DCT_LOEFFLER, "Loeffler (11 mults)");
     process_batch(images, n, k, JPEG_DCT_MATRIX, "Matrix (64 mults)");
-    process_batch(images, n, k, JPEG_DCT_APPROX, "Approximate (0 mults)");
+    process_batch(images, n, k, JPEG_DCT_RDCT, "RDCT (Cintra-Bayer, 2011)");
+    process_batch(images, n, k, JPEG_DCT_SILVEIRA_J3, "Silveira j=3 (2022)");
+    process_batch(images, n, k, JPEG_DCT_SILVEIRA_J7, "Silveira j=7 (2022)");
     process_batch(images, n, 1.0, JPEG_DCT_IDENTITY, "Identity (validation)");
     
     printf("\n═══════════════════════════════════════════════════════════\n");
@@ -460,7 +464,9 @@ int main(int argc, char **argv) {
     printf("═══════════════════════════════════════════════════════════\n");
     printf("\n✓ example/output_loeffler_k%.0f/\n", k);
     printf("✓ example/output_matrix_k%.0f/\n", k);
-    printf("✓ example/output_approx_k%.0f/\n", k);
+    printf("✓ example/output_rdct_k%.0f/\n", k);
+    printf("✓ example/output_silveira_j3_k%.0f/\n", k);
+    printf("✓ example/output_silveira_j7_k%.0f/\n", k);
     printf("✓ example/output_identity_k1/\n\n");
     
     printf("Usage: ./process_images [quality]\n");

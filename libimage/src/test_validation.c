@@ -1,421 +1,597 @@
 /**
  * @file test_validation.c
+ * @brief Validation suite for the canonical int32 codec.
  */
 
 #include "jpeg_codec.h"
+#include "internal.h"
+
+#include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
 #include <string.h>
 
-/* Zigzag order */
-static const int zigzag[64] = {
-     0,  1,  8, 16,  9,  2,  3, 10,
-    17, 24, 32, 25, 18, 11,  4,  5,
-    12, 19, 26, 33, 40, 48, 41, 34,
-    27, 20, 13,  6,  7, 14, 21, 28,
-    35, 42, 49, 56, 57, 50, 43, 36,
-    29, 22, 15, 23, 30, 37, 44, 51,
-    58, 59, 52, 45, 38, 31, 39, 46,
-    53, 60, 61, 54, 47, 55, 62, 63
-};
+static int g_failures = 0;
 
-/* Calculate PSNR */
-double calc_psnr(const jpeg_image_t *orig, const jpeg_image_t *recon) {
+#define CHECK(cond, fmt, ...)                                                     \
+    do {                                                                          \
+        if (cond) {                                                               \
+            printf("[ok] " fmt "\n", ##__VA_ARGS__);                              \
+        } else {                                                                  \
+            printf("[FAIL] " fmt "\n", ##__VA_ARGS__);                            \
+            g_failures++;                                                         \
+        }                                                                         \
+    } while (0)
+
+static jpeg_image_t *alloc_image(int32_t width, int32_t height,
+                                 jpeg_colorspace_t colorspace)
+{
+    size_t nbytes;
+    jpeg_image_t *img;
+
+    img = (jpeg_image_t *)calloc(1, sizeof(*img));
+    if (!img) return NULL;
+
+    img->width = width;
+    img->height = height;
+    img->colorspace = colorspace;
+
+    nbytes = (size_t)width * height * (colorspace == JPEG_COLORSPACE_GRAYSCALE ? 1u : 3u);
+    img->data = (uint8_t *)calloc(nbytes, 1);
+    if (!img->data) {
+        free(img);
+        return NULL;
+    }
+
+    return img;
+}
+
+static jpeg_image_t *make_rgb_pattern(int32_t width, int32_t height)
+{
+    jpeg_image_t *img = alloc_image(width, height, JPEG_COLORSPACE_RGB);
+    int32_t x, y;
+
+    if (!img) return NULL;
+
+    for (y = 0; y < height; y++) {
+        for (x = 0; x < width; x++) {
+            size_t i = (size_t)(y * width + x) * 3u;
+            img->data[i + 0] = (uint8_t)((13 * x + 7 * y) & 0xFF);
+            img->data[i + 1] = (uint8_t)((3 * x + 17 * y + 40) & 0xFF);
+            img->data[i + 2] = (uint8_t)((19 * x + 5 * y + 90) & 0xFF);
+        }
+    }
+
+    return img;
+}
+
+static jpeg_image_t *make_gray_pattern(int32_t width, int32_t height)
+{
+    jpeg_image_t *img = alloc_image(width, height, JPEG_COLORSPACE_GRAYSCALE);
+    int32_t x, y;
+
+    if (!img) return NULL;
+
+    for (y = 0; y < height; y++) {
+        for (x = 0; x < width; x++) {
+            img->data[y * width + x] = (uint8_t)((11 * x + 9 * y + 23) & 0xFF);
+        }
+    }
+
+    return img;
+}
+
+static double calc_psnr(const jpeg_image_t *orig, const jpeg_image_t *recon)
+{
+    double mse = 0.0;
+    int32_t i, total, channels;
+
     if (!orig || !recon) return 0.0;
     if (orig->width != recon->width || orig->height != recon->height) return 0.0;
-    
-    double mse = 0.0;
-    int total = orig->width * orig->height * 3;
-    
-    for (int i = 0; i < total; i++) {
+
+    channels = (orig->colorspace == JPEG_COLORSPACE_GRAYSCALE) ? 1 : 3;
+    total = orig->width * orig->height * channels;
+
+    for (i = 0; i < total; i++) {
         double diff = (double)orig->data[i] - (double)recon->data[i];
         mse += diff * diff;
     }
-    mse /= total;
-    
-    if (mse < 1e-10) return 100.0;
-    return 10.0 * log10(255.0 * 255.0 / mse);
+    mse /= (double)total;
+
+    if (mse <= 1e-12) return 100.0;
+    return 10.0 * log10((255.0 * 255.0) / mse);
 }
 
-/* Calculate bitrate using last non-zero coefficient in zigzag order */
-double calc_bitrate(const jpeg_compressed_t *comp) {
-    if (!comp) return 0.0;
-    
-    double total_bits = 0.0;
-    int total_blocks = 0;
-    
-    const int32_t *channels[3] = {comp->y_quantized, comp->cb_quantized, comp->cr_quantized};
-    int num_blocks[3] = {comp->num_blocks_y, comp->num_blocks_chroma, comp->num_blocks_chroma};
-    
-    for (int ch = 0; ch < 3; ch++) {
-        for (int b = 0; b < num_blocks[ch]; b++) {
-            const int32_t *block = channels[ch] + (b * 64);
-            
-            /* Find last non-zero coefficient in zigzag order */
-            int last_nonzero = -1;
-            for (int i = 63; i >= 0; i--) {
-                int zz_idx = zigzag[i];
-                if (block[zz_idx] != 0) {
-                    last_nonzero = i;
-                    break;
-                }
-            }
-            
-            /* Bits for this block: (last_nonzero + 1) * 8 bits per coefficient */
-            /* Each coefficient needs ~8 bits to represent values [-128, 127] */
-            if (last_nonzero >= 0) {
-                total_bits += (last_nonzero + 1) * 8.0;
-            }
-            total_blocks++;
-        }
-    }
-    
-    /* bpp = total_bits / total_pixels */
-    /* total_pixels = total_blocks * 64 (each block is 8x8) */
-    int total_pixels = total_blocks * 64;
-    return total_pixels > 0 ? total_bits / total_pixels : 0.0;
+static int arrays_equal(const int32_t *a, const int32_t *b, size_t n)
+{
+    return memcmp(a, b, n * sizeof(*a)) == 0;
 }
 
-/* Create test image */
-jpeg_image_t* create_test_image(int w, int h, uint8_t value) {
-    jpeg_image_t *img = (jpeg_image_t*)calloc(1, sizeof(jpeg_image_t));
-    if (!img) return NULL;
-    
-    img->width = w;
-    img->height = h;
-    img->colorspace = JPEG_COLORSPACE_RGB;
-    img->data = (uint8_t*)calloc(w * h * 3, sizeof(uint8_t));
-    
-    if (!img->data) {
-        free(img);
-        return NULL;
-    }
-    
-    memset(img->data, value, w * h * 3);
-    return img;
+static int32_t abs_i32(int32_t v)
+{
+    return (v < 0) ? -v : v;
 }
 
-/* Create test image with random noise for maximum bitrate */
-jpeg_image_t* create_random_image(int w, int h) {
-    jpeg_image_t *img = (jpeg_image_t*)calloc(1, sizeof(jpeg_image_t));
-    if (!img) return NULL;
+static void test_silveira_j7_roundtrip(void)
+{
+    int32_t input[64];
+    int32_t coeff[64];
+    int32_t recon[64];
+    const int32_t j7_col0[8] = {2, 2, 2, 1, 2, 2, 0, 0};
+    int32_t max_err = 0;
+    int basis_ok = 1;
 
-    img->width = w;
-    img->height = h;
-    img->colorspace = JPEG_COLORSPACE_RGB;
-    img->data = (uint8_t*)calloc(w * h * 3, sizeof(uint8_t));
+    for (int i = 0; i < 64; i++)
+        input[i] = (int32_t)((i * 37 + 19) % 255) - 128;
 
-    if (!img->data) {
-        free(img);
-        return NULL;
+    dct_silveira_j7_2d(input, coeff);
+    idct_silveira_j7_2d(coeff, recon);
+
+    for (int i = 0; i < 64; i++) {
+        int32_t err = abs_i32(recon[i] - input[i]);
+        if (err > max_err) max_err = err;
     }
 
-    /* Fill with pseudo-random values to ensure non-zero coefficients */
-    unsigned int seed = 12345;
-    for (int i = 0; i < w * h * 3; i++) {
-        seed = seed * 1103515245 + 12345;
-        img->data[i] = (uint8_t)((seed >> 16) & 0xFF);
-    }
-    return img;
-}
+    CHECK(max_err == 0,
+          "Silveira j=7 2D inverse exact without quantization (got %d)",
+          (int)max_err);
 
-/* Create grayscale test image (RGB with R=G=B) for perfect reconstruction test */
-jpeg_image_t* create_grayscale_image(int w, int h) {
-    jpeg_image_t *img = (jpeg_image_t*)calloc(1, sizeof(jpeg_image_t));
-    if (!img) return NULL;
+    memset(input, 0, sizeof(input));
+    input[0] = 1;
+    dct_silveira_j7_2d(input, coeff);
 
-    img->width = w;
-    img->height = h;
-    img->colorspace = JPEG_COLORSPACE_GRAYSCALE;
-    img->data = (uint8_t*)calloc(w * h, sizeof(uint8_t));
-
-    if (!img->data) {
-        free(img);
-        return NULL;
-    }
-
-    /* Fill with pseudo-random grayscale values */
-    unsigned int seed = 54321;
-    for (int i = 0; i < w * h; i++) {
-        seed = seed * 1103515245 + 12345;
-        img->data[i] = (uint8_t)((seed >> 16) & 0xFF);
-    }
-    return img;
-}
-
-/* Calculate PSNR for grayscale images */
-double calc_psnr_gray(const jpeg_image_t *orig, const jpeg_image_t *recon) {
-    if (!orig || !recon) return 0.0;
-    if (orig->width != recon->width || orig->height != recon->height) return 0.0;
-    
-    /* For grayscale, compare only Y channel (reconstruct to RGB, take first component) */
-    double mse = 0.0;
-    int total = orig->width * orig->height;
-    
-    for (int i = 0; i < total; i++) {
-        /* Original is grayscale (1 byte per pixel) */
-        /* Reconstructed is RGB (3 bytes per pixel), take average of RGB as Y */
-        int orig_val = orig->data[i];
-        int recon_val = (recon->data[i*3] + recon->data[i*3+1] + recon->data[i*3+2]) / 3;
-        double diff = (double)orig_val - (double)recon_val;
-        mse += diff * diff;
-    }
-    mse /= total;
-    
-    if (mse < 1e-10) return 100.0;
-    return 10.0 * log10(255.0 * 255.0 / mse);
-}/* Calculate bitrate for grayscale (only Y channel) */
-double calc_bitrate_gray(const jpeg_compressed_t *comp) {
-    if (!comp) return 0.0;
-    
-    double total_bits = 0.0;
-    int total_blocks = 0;
-    
-    /* Only Y channel for grayscale */
-    for (int b = 0; b < comp->num_blocks_y; b++) {
-        const int32_t *block = comp->y_quantized + (b * 64);
-        
-        /* Find last non-zero coefficient in zigzag order */
-        int last_nonzero = -1;
-        for (int i = 63; i >= 0; i--) {
-            int zz_idx = zigzag[i];
-            if (block[zz_idx] != 0) {
-                last_nonzero = i;
-                break;
+    for (int y = 0; y < 8; y++) {
+        for (int x = 0; x < 8; x++) {
+            int32_t expected = j7_col0[y] * j7_col0[x];
+            if (coeff[y * 8 + x] != expected) {
+                basis_ok = 0;
             }
         }
-        
-        if (last_nonzero >= 0) {
-            total_bits += (last_nonzero + 1) * 8.0;
-        }
-        total_blocks++;
     }
-    
-    int total_pixels = total_blocks * 64;
-    return total_pixels > 0 ? total_bits / total_pixels : 0.0;
+
+    CHECK(basis_ok,
+          "Silveira j=7 forward matches 2*T(a) basis column from Table 1");
 }
 
-/* Test identity mode */
-void test_identity_mode(void) {
-    printf("\n╔═══════════════════════════════════════════════════════╗\n");
-    printf("║         IDENTITY MODE VALIDATION TEST                ║\n");
-    printf("╚═══════════════════════════════════════════════════════╝\n\n");
-    
-    /* Test 1: Random noise image (should give max bitrate ~8 bpp) */
-    printf("Test 1: 8x8 random noise image\n");
-    printf("----------------------------------------\n");
-    
-    jpeg_image_t *img1 = create_random_image(8, 8);
-    if (!img1) {
-        printf("✗ Failed to create test image\n");
-        return;
-    }
-    
-    jpeg_params_t params1;
-    params1.quality_factor = 1.0;
-    params1.dct_method = JPEG_DCT_IDENTITY;
-    params1.use_standard_tables = 1;
-    params1.skip_quantization = 1;
-    
-    jpeg_compressed_t *comp1 = NULL;
-    jpeg_error_t err1 = jpeg_compress(img1, &params1, &comp1);
-    
-    if (err1 != JPEG_SUCCESS) {
-        printf("✗ Compression failed: %s\n", jpeg_error_string(err1));
-        jpeg_free_image(img1);
-        return;
-    }
-    
-    jpeg_image_t *recon1 = NULL;
-    err1 = jpeg_decompress(comp1, &recon1);
-    
-    if (err1 != JPEG_SUCCESS) {
-        printf("✗ Decompression failed: %s\n", jpeg_error_string(err1));
-        jpeg_free_compressed(comp1);
-        jpeg_free_image(img1);
-        return;
-    }
-    
-    double psnr1 = calc_psnr(img1, recon1);
-    double bitrate1 = calc_bitrate(comp1);
-    
-    printf("  Bitrate: %.4f bpp ", bitrate1);
-    if (bitrate1 > 7.5) printf("✓ (Expected ≈ 8.0)\n");
-    else printf("✗ (Expected ≈ 8.0)\n");
-    
-    printf("  PSNR: %.2f dB ", psnr1);
-    if (psnr1 > 90.0) printf("✓ (Expected ∞)\n");
-    else printf("✗ (Expected ∞)\n");
-    
-    jpeg_free_image(img1);
-    jpeg_free_image(recon1);
-    jpeg_free_compressed(comp1);
-    
-    /* Test 2: Larger random image */
-    printf("\nTest 2: 64x64 random noise image\n");
-    printf("----------------------------------------\n");
-    
-    jpeg_image_t *img2 = create_random_image(64, 64);
-    if (!img2) {
-        printf("✗ Failed to create test image\n");
-        return;
-    }
-    
-    jpeg_params_t params2;
-    params2.quality_factor = 1.0;
-    params2.dct_method = JPEG_DCT_IDENTITY;
-    params2.use_standard_tables = 1;
-    params2.skip_quantization = 1;
-    
-    jpeg_compressed_t *comp2 = NULL;
-    jpeg_error_t err2 = jpeg_compress(img2, &params2, &comp2);
-    
-    if (err2 != JPEG_SUCCESS) {
-        printf("✗ Compression failed: %s\n", jpeg_error_string(err2));
-        jpeg_free_image(img2);
-        return;
-    }
-    
-    jpeg_image_t *recon2 = NULL;
-    err2 = jpeg_decompress(comp2, &recon2);
-    
-    if (err2 != JPEG_SUCCESS) {
-        printf("✗ Decompression failed: %s\n", jpeg_error_string(err2));
-        jpeg_free_compressed(comp2);
-        jpeg_free_image(img2);
-        return;
-    }
-    
-    double psnr2 = calc_psnr(img2, recon2);
-    double bitrate2 = calc_bitrate(comp2);
-    
-    printf("  Bitrate: %.4f bpp ", bitrate2);
-    if (bitrate2 > 7.0) printf("✓ (Expected ≈ 8.0)\n");
-    else printf("✗ (Expected ≈ 8.0)\n");
-    
-    printf("  PSNR: %.2f dB ", psnr2);
-    if (psnr2 > 90.0) printf("✓ (Expected ∞)\n");
-    else printf("✗ (Expected ∞)\n");
-    
-    jpeg_free_image(img2);
-    jpeg_free_image(recon2);
-    jpeg_free_compressed(comp2);
-    
-    printf("\n╔═══════════════════════════════════════════════════════╗\n");
-    printf("║             VALIDATION COMPLETE                       ║\n");
-    printf("╚═══════════════════════════════════════════════════════╝\n");
-    
-    /* Test 3: Grayscale image for perfect reconstruction */
-    printf("\nTest 3: 64x64 grayscale image (no color conversion loss)\n");
-    printf("----------------------------------------\n");
-    
-    jpeg_image_t *img3 = create_grayscale_image(64, 64);
-    if (!img3) {
-        printf("✗ Failed to create test image\n");
-        return;
-    }
-    
-    jpeg_params_t params3;
-    params3.quality_factor = 1.0;
-    params3.dct_method = JPEG_DCT_IDENTITY;
-    params3.use_standard_tables = 1;
-    params3.skip_quantization = 1;
-    
-    jpeg_compressed_t *comp3 = NULL;
-    jpeg_error_t err3 = jpeg_compress(img3, &params3, &comp3);
-    
-    if (err3 != JPEG_SUCCESS) {
-        printf("✗ Compression failed: %s\n", jpeg_error_string(err3));
-        jpeg_free_image(img3);
-        return;
-    }
-    
-    jpeg_image_t *recon3 = NULL;
-    err3 = jpeg_decompress(comp3, &recon3);
-    
-    if (err3 != JPEG_SUCCESS) {
-        printf("✗ Decompression failed: %s\n", jpeg_error_string(err3));
-        jpeg_free_compressed(comp3);
-        jpeg_free_image(img3);
-        return;
-    }
-    
-    double psnr3 = calc_psnr_gray(img3, recon3);
-    double bitrate3 = calc_bitrate_gray(comp3);  /* Use grayscale bitrate */
-    
-    printf("  Bitrate: %.4f bpp ", bitrate3);
-    if (bitrate3 > 7.0) printf("✓ (Expected ≈ 8.0)\n");
-    else printf("✗ (Expected ≈ 8.0)\n");
-    
-    printf("  PSNR: %.2f dB ", psnr3);
-    if (psnr3 > 90.0) printf("✓ (Perfect reconstruction)\n");
-    else printf("✗ (Expected ∞)\n");
-    
-    jpeg_free_image(img3);
-    jpeg_free_image(recon3);
-    jpeg_free_compressed(comp3);
-    
-    printf("\n  Note: RGB images have ~43dB PSNR due to integer color conversion\n");
-    printf("        (RGB→YCbCr→RGB rounding). Grayscale has perfect PSNR.\n");
-}
-
-/* Compare DCT methods */
-void compare_methods(void) {
-    printf("\n╔═══════════════════════════════════════════════════════╗\n");
-    printf("║         DCT METHODS COMPARISON                        ║\n");
-    printf("╚═══════════════════════════════════════════════════════╝\n\n");
-    
-    /* Use random image to ensure all coefficients are non-zero */
-    jpeg_image_t *img = create_random_image(64, 64);
-    if (!img) {
-        printf("✗ Failed to create test image\n");
-        return;
-    }
-    
-    const char *method_names[] = {"Loeffler", "Matrix", "Approximate", "Identity"};
-    jpeg_dct_method_t methods[] = {
-        JPEG_DCT_LOEFFLER, JPEG_DCT_MATRIX, 
-        JPEG_DCT_APPROX, JPEG_DCT_IDENTITY
+static void test_silveira_class_codec_smoke(void)
+{
+    jpeg_dct_method_t methods[2] = {
+        JPEG_DCT_SILVEIRA_J3, JPEG_DCT_SILVEIRA_J7
     };
-    
-    printf("%-12s | %10s | %10s\n", "Method", "PSNR (dB)", "Bitrate");
-    printf("-------------|------------|------------\n");
-    
-    for (int m = 0; m < 4; m++) {
-        jpeg_params_t params;
-        params.quality_factor = 1.0;  /* Best quality */
-        params.dct_method = methods[m];
-        params.use_standard_tables = 1;
-        params.skip_quantization = 1;  /* Skip quantization for fair comparison */
-        
+    const char *names[2] = {
+        "silveira_j3", "silveira_j7"
+    };
+    jpeg_image_t *img = make_rgb_pattern(16, 16);
+
+    CHECK(img != NULL, "allocate RGB image for Silveira class smoke tests");
+    if (!img) return;
+
+    CHECK(JPEG_DCT_IDENTITY == 5, "JPEG_DCT_IDENTITY enum value is 5");
+
+    for (int i = 0; i < 2; i++) {
         jpeg_compressed_t *comp = NULL;
-        jpeg_compress(img, &params, &comp);
-        
         jpeg_image_t *recon = NULL;
-        jpeg_decompress(comp, &recon);
-        
-        double psnr = calc_psnr(img, recon);
-        double bitrate = calc_bitrate(comp);
-        
-        printf("%-12s | %10.2f | %10.4f\n", method_names[m], psnr, bitrate);
-        
+        jpeg_params_t params;
+        jpeg_error_t err;
+
+        params.quality_factor = 2.0f;
+        params.dct_method = methods[i];
+        params.subsampling = JPEG_SUBSAMP_444;
+        params.flags = 0;
+
+        err = jpeg_compress(img, &params, &comp);
+        CHECK(err == JPEG_SUCCESS && comp != NULL,
+              "compress RGB with %s", names[i]);
+        if (err == JPEG_SUCCESS && comp) {
+            err = jpeg_decompress(comp, &recon);
+            CHECK(err == JPEG_SUCCESS && recon != NULL,
+                  "decompress RGB with %s", names[i]);
+        }
+
         jpeg_free_image(recon);
         jpeg_free_compressed(comp);
     }
-    
+
     jpeg_free_image(img);
-    printf("\n");
 }
 
-int main(void) {
-    printf("╔═══════════════════════════════════════════════════════╗\n");
-    printf("║     JPEG CODEC - VALIDATION & TESTING SUITE          ║\n");
-    printf("║     Version: %s                                  ║\n", jpeg_version());
-    printf("╚═══════════════════════════════════════════════════════╝\n");
-    
-    test_identity_mode();
-    compare_methods();
-    
-    return 0;
+static void test_identity_gray_exact(void)
+{
+    jpeg_image_t *img = make_gray_pattern(19, 13);
+    jpeg_compressed_t *comp = NULL;
+    jpeg_image_t *recon = NULL;
+    jpeg_params_t params;
+    jpeg_error_t err;
+
+    CHECK(img != NULL, "allocate grayscale test image");
+    if (!img) return;
+
+    params.quality_factor = 1.0f;
+    params.dct_method = JPEG_DCT_IDENTITY;
+    params.subsampling = JPEG_SUBSAMP_444;
+    params.flags = JPEG_FLAG_SKIP_QUANTIZATION | JPEG_FLAG_KEEP_COEFFS;
+
+    err = jpeg_compress(img, &params, &comp);
+    CHECK(err == JPEG_SUCCESS && comp != NULL, "compress grayscale identity");
+    if (err == JPEG_SUCCESS && comp) {
+        CHECK(comp->cb_quantized == NULL && comp->cr_quantized == NULL,
+              "grayscale fast path omits chroma buffers");
+        CHECK(comp->y_coeffs != NULL, "KEEP_COEFFS stores luma coefficients");
+        err = jpeg_decompress(comp, &recon);
+        CHECK(err == JPEG_SUCCESS && recon != NULL, "decompress grayscale identity");
+        if (err == JPEG_SUCCESS && recon) {
+            CHECK(recon->colorspace == JPEG_COLORSPACE_GRAYSCALE,
+                  "grayscale decode preserves colorspace");
+            CHECK(memcmp(img->data, recon->data, (size_t)img->width * img->height) == 0,
+                  "grayscale identity + skip quantization is exact");
+        }
+    }
+
+    jpeg_free_image(img);
+    jpeg_free_image(recon);
+    jpeg_free_compressed(comp);
+}
+
+static void test_rgb_roundtrip_subsampling(jpeg_subsampling_t subsampling)
+{
+    jpeg_image_t *img = make_rgb_pattern(23, 17);
+    jpeg_compressed_t *comp = NULL;
+    jpeg_image_t *recon = NULL;
+    jpeg_params_t params;
+    jpeg_error_t err;
+    uint32_t expected_kernel_calls;
+    double psnr;
+    double min_psnr;
+    const char *label = subsampling == JPEG_SUBSAMP_444 ? "444"
+                      : subsampling == JPEG_SUBSAMP_422 ? "422"
+                      : "420";
+
+    CHECK(img != NULL, "allocate RGB image for %s", label);
+    if (!img) return;
+
+    params.quality_factor = 2.0f;
+    params.dct_method = JPEG_DCT_LOEFFLER;
+    params.subsampling = subsampling;
+    params.flags = 0;
+    min_psnr = subsampling == JPEG_SUBSAMP_444 ? 17.0
+             : subsampling == JPEG_SUBSAMP_422 ? 15.5
+             : 14.5;
+
+    err = jpeg_compress(img, &params, &comp);
+    CHECK(err == JPEG_SUCCESS && comp != NULL, "compress RGB Loeffler %s", label);
+    if (err == JPEG_SUCCESS && comp) {
+        expected_kernel_calls = (uint32_t)(comp->num_blocks_y + 2 * comp->num_blocks_chroma);
+        CHECK(comp->subsampling == subsampling, "compressed metadata stores subsampling %s", label);
+        CHECK(comp->dct_kernel_calls == expected_kernel_calls,
+              "DCT profiling counts all 8x8 blocks for %s", label);
+        err = jpeg_decompress(comp, &recon);
+        CHECK(err == JPEG_SUCCESS && recon != NULL, "decompress RGB Loeffler %s", label);
+        CHECK(comp->idct_kernel_calls == expected_kernel_calls,
+              "IDCT profiling counts all 8x8 blocks for %s", label);
+        if (err == JPEG_SUCCESS && recon) {
+            psnr = calc_psnr(img, recon);
+            CHECK(psnr > min_psnr,
+                  "RGB round-trip PSNR > %.1f dB for %s (got %.2f)",
+                  min_psnr, label, psnr);
+        }
+    }
+
+    jpeg_free_image(img);
+    jpeg_free_image(recon);
+    jpeg_free_compressed(comp);
+}
+
+static void test_skip_quantization_consistency(void)
+{
+    jpeg_image_t *img = make_rgb_pattern(16, 16);
+    jpeg_compressed_t *comp = NULL;
+    jpeg_params_t params;
+    jpeg_error_t err;
+    size_t coeff_count;
+
+    CHECK(img != NULL, "allocate RGB image for skip quantization");
+    if (!img) return;
+
+    params.quality_factor = 4.0f;
+    params.dct_method = JPEG_DCT_MATRIX;
+    params.subsampling = JPEG_SUBSAMP_444;
+    params.flags = JPEG_FLAG_SKIP_QUANTIZATION | JPEG_FLAG_KEEP_COEFFS;
+
+    err = jpeg_compress(img, &params, &comp);
+    CHECK(err == JPEG_SUCCESS && comp != NULL, "compress with skip quantization");
+    if (err == JPEG_SUCCESS && comp) {
+        coeff_count = (size_t)comp->num_blocks_y * 64u;
+        CHECK(comp->y_coeffs != NULL, "KEEP_COEFFS allocates Y coefficients");
+        CHECK(arrays_equal(comp->y_coeffs, comp->y_quantized, coeff_count),
+              "skip quantization keeps Y coefficients identical");
+    }
+
+    jpeg_free_image(img);
+    jpeg_free_compressed(comp);
+}
+
+static void test_frame_roundtrip(void)
+{
+    jpeg_image_t *img = make_rgb_pattern(24, 16);
+    jpeg_compressed_t *comp = NULL;
+    jpeg_compressed_t *decoded = NULL;
+    jpeg_compressed_t *decoded_payload = NULL;
+    jpeg_image_t *recon = NULL;
+    jpeg_params_t params;
+    jpeg_error_t err;
+    int32_t frame_len;
+    int32_t payload_len;
+    uint8_t *frame_buf = NULL;
+    uint8_t *payload_buf = NULL;
+    size_t y_count, c_count;
+
+    CHECK(img != NULL, "allocate RGB image for frame round-trip");
+    if (!img) return;
+
+    params.quality_factor = 2.0f;
+    params.dct_method = JPEG_DCT_LOEFFLER;
+    params.subsampling = JPEG_SUBSAMP_422;
+    params.flags = 0;
+
+    err = jpeg_compress(img, &params, &comp);
+    CHECK(err == JPEG_SUCCESS && comp != NULL, "compress for frame round-trip");
+    if (err != JPEG_SUCCESS || !comp) {
+        jpeg_free_image(img);
+        return;
+    }
+
+    frame_buf = (uint8_t *)calloc(JPEG_FRAME_MAX_TOTAL_BYTES, 1);
+    CHECK(frame_buf != NULL, "allocate frame buffer");
+    if (!frame_buf) goto cleanup;
+    payload_buf = (uint8_t *)calloc(JPEG_FRAME_MAX_PAYLOAD_BYTES, 1);
+    CHECK(payload_buf != NULL, "allocate payload buffer");
+    if (!payload_buf) goto cleanup;
+
+    frame_len = jpeg_frame_encode(comp, frame_buf, JPEG_FRAME_MAX_TOTAL_BYTES);
+    CHECK(frame_len > JPEG_FRAME_HEADER_SIZE, "frame encode succeeds");
+    if (frame_len <= JPEG_FRAME_HEADER_SIZE) goto cleanup;
+
+    CHECK(frame_buf[0] == JPEG_FRAME_MAGIC, "frame header starts with magic");
+    CHECK(frame_buf[1] == JPEG_FRAME_VERSION, "frame header version matches");
+    CHECK((int32_t)(((uint32_t)frame_buf[2] << 24) |
+                    ((uint32_t)frame_buf[3] << 16) |
+                    ((uint32_t)frame_buf[4] << 8) |
+                    (uint32_t)frame_buf[5]) == frame_len - JPEG_FRAME_HEADER_SIZE,
+          "frame header payload length matches encoded size");
+
+    decoded = jpeg_frame_alloc_compressed(img->width, img->height,
+                                          params.subsampling, img->colorspace);
+    CHECK(decoded != NULL, "frame alloc compressed context");
+    if (!decoded) goto cleanup;
+
+    decoded->quality_factor = params.quality_factor;
+    decoded->dct_method = params.dct_method;
+    decoded->flags = params.flags;
+
+    CHECK(jpeg_frame_decode(frame_buf, frame_len, decoded) == frame_len,
+          "frame decode succeeds with matching context");
+
+    payload_len = jpeg_frame_payload_encode(comp, payload_buf,
+                                            JPEG_FRAME_MAX_PAYLOAD_BYTES);
+    CHECK(payload_len == frame_len - JPEG_FRAME_HEADER_SIZE,
+          "payload-only encode length matches framed payload");
+    decoded_payload = jpeg_frame_alloc_compressed(img->width, img->height,
+                                                  params.subsampling, img->colorspace);
+    CHECK(decoded_payload != NULL, "payload alloc compressed context");
+    if (!decoded_payload) goto cleanup;
+    decoded_payload->quality_factor = params.quality_factor;
+    decoded_payload->dct_method = params.dct_method;
+    decoded_payload->flags = params.flags;
+
+    CHECK(jpeg_frame_payload_decode(payload_buf,
+                                    payload_len, decoded_payload) == payload_len,
+          "payload-only decode succeeds with matching context");
+
+    y_count = (size_t)comp->num_blocks_y * 64u;
+    c_count = (size_t)comp->num_blocks_chroma * 64u;
+    CHECK(arrays_equal(comp->y_quantized, decoded->y_quantized, y_count),
+          "frame decode preserves Y quantized blocks");
+    CHECK(arrays_equal(comp->cb_quantized, decoded->cb_quantized, c_count),
+          "frame decode preserves Cb quantized blocks");
+    CHECK(arrays_equal(comp->cr_quantized, decoded->cr_quantized, c_count),
+          "frame decode preserves Cr quantized blocks");
+    CHECK(arrays_equal(comp->y_quantized, decoded_payload->y_quantized, y_count),
+          "payload decode preserves Y quantized blocks");
+    CHECK(arrays_equal(comp->cb_quantized, decoded_payload->cb_quantized, c_count),
+          "payload decode preserves Cb quantized blocks");
+    CHECK(arrays_equal(comp->cr_quantized, decoded_payload->cr_quantized, c_count),
+          "payload decode preserves Cr quantized blocks");
+
+    err = jpeg_decompress(decoded, &recon);
+    CHECK(err == JPEG_SUCCESS && recon != NULL, "decompress decoded frame");
+
+cleanup:
+    jpeg_free_image(img);
+    jpeg_free_image(recon);
+    jpeg_free_compressed(decoded);
+    jpeg_free_compressed(decoded_payload);
+    jpeg_free_compressed(comp);
+    free(frame_buf);
+    free(payload_buf);
+}
+
+static void test_frame_rejects_invalid_inputs(void)
+{
+    jpeg_image_t *img = make_rgb_pattern(16, 16);
+    jpeg_compressed_t *comp = NULL;
+    jpeg_compressed_t *wrong_ctx = NULL;
+    jpeg_params_t params;
+    jpeg_error_t err;
+    int32_t frame_len;
+    uint8_t *frame_buf = NULL;
+
+    CHECK(img != NULL, "allocate RGB image for invalid frame tests");
+    if (!img) return;
+
+    params.quality_factor = 2.0f;
+    params.dct_method = JPEG_DCT_LOEFFLER;
+    params.subsampling = JPEG_SUBSAMP_444;
+    params.flags = 0;
+
+    err = jpeg_compress(img, &params, &comp);
+    CHECK(err == JPEG_SUCCESS && comp != NULL, "compress for invalid frame tests");
+    if (err != JPEG_SUCCESS || !comp) {
+        jpeg_free_image(img);
+        return;
+    }
+
+    frame_buf = (uint8_t *)calloc(JPEG_FRAME_MAX_TOTAL_BYTES, 1);
+    CHECK(frame_buf != NULL, "allocate invalid-frame buffer");
+    if (!frame_buf) goto cleanup;
+
+    frame_len = jpeg_frame_encode(comp, frame_buf, JPEG_FRAME_MAX_TOTAL_BYTES);
+    CHECK(frame_len > 0, "encode frame for invalid input checks");
+    if (frame_len <= 0) goto cleanup;
+
+    wrong_ctx = jpeg_frame_alloc_compressed(img->width, img->height,
+                                            JPEG_SUBSAMP_444, JPEG_COLORSPACE_GRAYSCALE);
+    CHECK(wrong_ctx != NULL, "allocate mismatched frame context");
+    if (wrong_ctx) {
+        CHECK(jpeg_frame_decode(frame_buf, frame_len, wrong_ctx) < 0,
+              "frame decode rejects mismatched grayscale context");
+        jpeg_free_compressed(wrong_ctx);
+        wrong_ctx = NULL;
+    }
+
+    frame_buf[0] ^= 0x01;
+    wrong_ctx = jpeg_frame_alloc_compressed(img->width, img->height,
+                                            params.subsampling, img->colorspace);
+    CHECK(wrong_ctx != NULL, "allocate valid frame context");
+    if (wrong_ctx) {
+        CHECK(jpeg_frame_decode(frame_buf, frame_len, wrong_ctx) < 0,
+              "frame decode rejects invalid magic");
+        jpeg_free_compressed(wrong_ctx);
+        wrong_ctx = NULL;
+    }
+    frame_buf[0] ^= 0x01;
+
+    wrong_ctx = jpeg_frame_alloc_compressed(img->width, img->height,
+                                            params.subsampling, img->colorspace);
+    CHECK(wrong_ctx != NULL, "allocate valid frame context for truncation");
+    if (wrong_ctx) {
+        CHECK(jpeg_frame_decode(frame_buf, frame_len - 1, wrong_ctx) < 0,
+              "frame decode rejects truncated payload");
+        jpeg_free_compressed(wrong_ctx);
+    }
+
+cleanup:
+    jpeg_free_image(img);
+    jpeg_free_compressed(comp);
+    free(frame_buf);
+}
+
+static void test_invalid_parameter_validation(void)
+{
+    jpeg_image_t *img = make_rgb_pattern(16, 16);
+    jpeg_compressed_t *comp = NULL;
+    jpeg_params_t params;
+    jpeg_error_t err;
+
+    CHECK(img != NULL, "allocate RGB image for invalid-parameter tests");
+    if (!img) return;
+
+    params.quality_factor = 2.0f;
+    params.dct_method = JPEG_DCT_LOEFFLER;
+    params.subsampling = JPEG_SUBSAMP_444;
+    params.flags = 0;
+
+    params.subsampling = (jpeg_subsampling_t)99;
+    err = jpeg_compress(img, &params, &comp);
+    CHECK(err == JPEG_ERROR_INVALID_SUBSAMPLING,
+          "compress rejects invalid subsampling with explicit error");
+
+    params.subsampling = JPEG_SUBSAMP_444;
+    params.quality_factor = NAN;
+    err = jpeg_compress(img, &params, &comp);
+    CHECK(err == JPEG_ERROR_INVALID_QUALITY,
+          "compress rejects NaN quality factor");
+
+    params.quality_factor = -1.0f;
+    err = jpeg_compress(img, &params, &comp);
+    CHECK(err == JPEG_ERROR_INVALID_QUALITY,
+          "compress rejects non-positive quality factor");
+
+    params.quality_factor = 2.0f;
+    err = jpeg_compress(img, &params, &comp);
+    CHECK(err == JPEG_SUCCESS && comp != NULL, "compress succeeds for validation baseline");
+    if (err == JPEG_SUCCESS && comp) {
+        jpeg_subsampling_t saved_subsampling = comp->subsampling;
+        jpeg_colorspace_t saved_colorspace = comp->colorspace;
+        float saved_quality = comp->quality_factor;
+
+        comp->subsampling = (jpeg_subsampling_t)99;
+        err = jpeg_decompress(comp, NULL);
+        CHECK(err == JPEG_ERROR_NULL_POINTER, "decompress still checks null output pointer first");
+
+        {
+            jpeg_image_t *recon = NULL;
+            err = jpeg_decompress(comp, &recon);
+            CHECK(err == JPEG_ERROR_INVALID_SUBSAMPLING,
+                  "decompress rejects invalid subsampling");
+            jpeg_free_image(recon);
+        }
+
+        comp->subsampling = saved_subsampling;
+        comp->colorspace = (jpeg_colorspace_t)99;
+        {
+            jpeg_image_t *recon = NULL;
+            err = jpeg_decompress(comp, &recon);
+            CHECK(err == JPEG_ERROR_INVALID_COLORSPACE,
+                  "decompress rejects invalid colorspace");
+            jpeg_free_image(recon);
+        }
+
+        comp->colorspace = saved_colorspace;
+        comp->quality_factor = NAN;
+        {
+            jpeg_image_t *recon = NULL;
+            err = jpeg_decompress(comp, &recon);
+            CHECK(err == JPEG_ERROR_INVALID_QUALITY,
+                  "decompress rejects invalid quality factor");
+            jpeg_free_image(recon);
+        }
+
+        comp->quality_factor = saved_quality;
+    }
+
+    CHECK(jpeg_frame_alloc_compressed(16, 16, (jpeg_subsampling_t)99, JPEG_COLORSPACE_RGB) == NULL,
+          "frame alloc rejects invalid subsampling");
+    CHECK(jpeg_frame_alloc_compressed(16, 16, JPEG_SUBSAMP_444, (jpeg_colorspace_t)99) == NULL,
+          "frame alloc rejects invalid colorspace");
+    CHECK(jpeg_frame_alloc_compressed(INT32_MAX, INT32_MAX,
+                                      JPEG_SUBSAMP_444, JPEG_COLORSPACE_RGB) == NULL,
+          "frame alloc rejects overflowing block geometry");
+
+    jpeg_free_compressed(comp);
+    jpeg_free_image(img);
+}
+
+int main(void)
+{
+    printf("libimage validation suite %s\n", jpeg_version());
+
+    test_identity_gray_exact();
+    test_silveira_j7_roundtrip();
+    test_silveira_class_codec_smoke();
+    test_rgb_roundtrip_subsampling(JPEG_SUBSAMP_444);
+    test_rgb_roundtrip_subsampling(JPEG_SUBSAMP_422);
+    test_rgb_roundtrip_subsampling(JPEG_SUBSAMP_420);
+    test_skip_quantization_consistency();
+    test_frame_roundtrip();
+    test_frame_rejects_invalid_inputs();
+    test_invalid_parameter_validation();
+
+    if (g_failures == 0) {
+        printf("All validation tests passed.\n");
+        return 0;
+    }
+
+    printf("%d validation test(s) failed.\n", g_failures);
+    return 1;
 }

@@ -1,0 +1,4 @@
+## IDF Component Manager Manifest - ESP32-S3 main component
+dependencies:
+  idf: ">=5.0"
+  espressif/led_strip: ">=2.0.0"
