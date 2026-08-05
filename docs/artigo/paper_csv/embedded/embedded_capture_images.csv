@@ -1,0 +1,10 @@
+order,run,kind,filename,width,height,pixels
+1,run0004,original,run0004_ref.bmp,320,240,76800
+2,run0005,original,run0005_ref.bmp,320,240,76800
+3,run0009,original,run0009_ref.bmp,320,240,76800
+4,run0004,Loeffler,run0004_loeffler_k0p8.bmp,320,240,76800
+5,run0005,Loeffler,run0005_loeffler_k0p8.bmp,320,240,76800
+6,run0009,Loeffler,run0009_loeffler_k0p8.bmp,320,240,76800
+7,run0004,Silveira j=7,run0004_silveira_j7_k0p8.bmp,320,240,76800
+8,run0005,Silveira j=7,run0005_silveira_j7_k0p8.bmp,320,240,76800
+9,run0009,Silveira j=7,run0009_silveira_j7_k0p8.bmp,320,240,76800

@@ -1,0 +1,120 @@
+# Python environments, caches and coverage
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Local secrets and credentials
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+credentials*.json
+secrets*.json
+
+# Local AI assistants and prompt material
+.claude/
+.codex/
+.cursor/
+.continue/
+.windsurf/
+.aider*
+/AGENTS.md
+/CLAUDE.md
+/GEMINI.md
+/README_REFERENCIA.md
+/proximo prompt
+
+# Editors, operating systems and temporary files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.backup*
+*.bak
+*.tmp
+
+# C/CMake build outputs
+libimage/bin/
+libimage/build/
+libimage/*.a
+libimage/*.so
+libimage/test_validation
+libimage/example/example
+libimage/example/process_images
+**/CMakeFiles/
+**/CMakeCache.txt
+**/cmake_install.cmake
+**/compile_commands.json
+
+# PlatformIO and ESP-IDF generated state
+.pio/
+**/.pio/
+prototype/managed_components/
+prototype/**/managed_components/
+prototype/dependencies.lock
+prototype/sdkconfig
+prototype/sdkconfig.old
+prototype/sdkconfig.bridge
+prototype/sdkconfig.esp32cam
+prototype/sdkconfig.esp32dev
+
+# Generated experiment outputs and historical datasets
+/results_loeffler/
+/experiments/a_dados_prototipo/
+/experiments/dados_antigos/
+/experiments/graficos_summary7/
+/experiments/paper_csv/
+/experiments/plots_loeffler/
+/experiments/resultados/
+/experiments/results/
+/experiments/src_py/imgs/
+/experiments/src_py/plots*/
+/experiments/src_py/results*/
+/libimage/example/output_*/
+/libimage/example/imgs/
+
+# Generated article material and local research references
+/docs/PDFs/
+/docs/artigo/ARTICLE_UPDATE.md
+/docs/artigo/backup.tex
+/docs/artigo/* copy.txt
+/docs/artigo/paper_csv/results_and_discussion_latex.md
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+*.toc
+*.pdf
+*.zip
+
+# Generated images and binary experiment outputs
+*.bmp
+*.jpg
+*.jpeg
+*.png
+*.ppm
+
+# Versioned source datasets and article assets
+!/experiments/imgs/
+!/experiments/imgs/**
+!/docs/artigo/imgs/
+!/docs/artigo/imgs/**
+!/docs/artigo/paper_csv/**/*.png

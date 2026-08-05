@@ -1,0 +1,9 @@
+order,image,filename,width,height,pixels,megapixels,aspect_ratio
+1,estatua-da-liberdade,estatua-da-liberdade.bmp,1024,795,814080,0.8141,1.2881
+2,fruits,fruits.bmp,512,480,245760,0.2458,1.0667
+3,marco-zero,marco-zero.bmp,720,330,237600,0.2376,2.1818
+4,monarch,monarch.bmp,768,512,393216,0.3932,1.5000
+5,muralha-da-china,muralha-da-china.bmp,276,183,50508,0.0505,1.5082
+6,pens,pens.bmp,512,480,245760,0.2458,1.0667
+7,torre-de-pisa,torre-de-pisa.bmp,800,534,427200,0.4272,1.4981
+8,yacht,yacht.bmp,512,480,245760,0.2458,1.0667
