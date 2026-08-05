@@ -90,9 +90,10 @@ prototype/sdkconfig.esp32dev
 # Generated article material and local research references
 /docs/PDFs/
 /docs/artigo/ARTICLE_UPDATE.md
-/docs/artigo/backup.tex
+/docs/artigo/*.tex
 /docs/artigo/* copy.txt
 /docs/artigo/paper_csv/results_and_discussion_latex.md
+*.tex
 *.aux
 *.bbl
 *.blg

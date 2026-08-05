@@ -187,6 +187,33 @@ article-ready curated exports are kept under `docs/artigo/paper_csv/`.
 
 ## 📡 Embedded Prototype
 
+![Prototype development from PCB design to the assembled system](docs/artigo/imgs/prototype.png)
+
+*Prototype development: PCB layout, fabrication, board integration, display
+tests, and the assembled bench unit.*
+
+### How the Prototype Was Created
+
+The prototype was created to move the codec from repeatable desktop tests to
+real image capture on constrained hardware. Development progressed in four
+main stages:
+
+1. The JPEG-like pipeline and all DCT methods were consolidated in the
+   portable `libimage` library and validated on the desktop.
+2. The embedded workload was split between an ESP32-CAM, responsible for
+   capture and compression, and an ESP32-S3, responsible for reception,
+   decompression, metrics, display, and storage.
+3. A dedicated carrier PCB was designed and assembled to organize the boards,
+   power, SPI interconnection, controls, and display as one experimental unit.
+4. The SPI protocol was stabilized with explicit readiness signaling, CRC32,
+   guarded transfers, and separate telemetry. The `ALL` mode was then added so
+   every method could be evaluated from the same physical capture.
+
+This construction makes the prototype more than a codec demonstration: it is
+an end-to-end measurement platform that records image quality, compression
+rate, execution time, and transmission behavior under the same workload used
+by the desktop implementation.
+
 The current prototype uses two boards:
 
 ```text
@@ -440,6 +467,35 @@ curadas necessárias para o artigo ficam em `docs/artigo/paper_csv/`.
 ---
 
 ## 📡 Protótipo Embarcado
+
+![Criação do protótipo, do projeto da PCB ao sistema montado](docs/artigo/imgs/prototype.png)
+
+*Criação do protótipo: layout da PCB, fabricação, integração das placas,
+testes do display e unidade de bancada montada.*
+
+### Como o Protótipo Foi Criado
+
+O protótipo foi criado para levar o codec dos testes reproduzíveis em
+computador até a captura de imagens reais em hardware com recursos limitados.
+O desenvolvimento avançou em quatro etapas principais:
+
+1. O pipeline JPEG-like e todos os métodos DCT foram consolidados na biblioteca
+   portátil `libimage` e validados no computador.
+2. A carga embarcada foi dividida entre uma ESP32-CAM, responsável pela captura
+   e compressão, e uma ESP32-S3, responsável pela recepção, descompressão,
+   métricas, exibição e armazenamento.
+3. Uma PCB dedicada de interconexão foi projetada e montada para organizar as
+   placas, alimentação, enlace SPI, controles e display em uma única unidade
+   experimental.
+4. O protocolo SPI foi estabilizado com sinalização explícita de prontidão,
+   CRC32, transferências com guarda e telemetria separada. Em seguida, foi
+   criado o modo `ALL`, no qual todos os métodos são avaliados a partir da mesma
+   captura física.
+
+Essa construção transforma o protótipo em mais do que uma demonstração do
+codec: ele funciona como uma plataforma de medição ponta a ponta, registrando
+qualidade de imagem, taxa de compressão, tempo de execução e comportamento da
+transmissão sob a mesma carga utilizada pela implementação para computador.
 
 O protótipo atual usa duas placas:
 
